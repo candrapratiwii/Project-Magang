@@ -1,0 +1,11 @@
+{
+  "title": "SIMPERA-NET",
+  "description": "Sistem Persediaan Infrastruktur TIK",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

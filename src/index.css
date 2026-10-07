@@ -1,0 +1,229 @@
+@import 'tailwindcss';
+
+@font-face {
+  font-family: "Inter:Bold";
+  src: url("https://static.figma.com/font/Inter_1") format("woff2");
+  font-style: normal;
+  font-weight: 700;
+}
+
+@font-face {
+  font-family: "Inter:Medium";
+  src: url("https://static.figma.com/font/Inter_1") format("woff2");
+  font-style: normal;
+  font-weight: 500;
+}
+
+@font-face {
+  font-family: "Inter:Regular";
+  src: url("https://static.figma.com/font/Inter_1") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: "Inter:Semi Bold";
+  src: url("https://static.figma.com/font/Inter_1") format("woff2");
+  font-style: normal;
+  font-weight: 600;
+}
+
+@font-face {
+  font-family: "Noto Sans Math:Regular";
+  src: url("https://static.figma.com/font/NotoSansMath-Regular_1") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: "Noto Sans Symbols2:Regular";
+  src: url("https://static.figma.com/font/NotoSansSymbols2-Regular_5") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: "Noto Sans Symbols:Regular";
+  src: url("https://static.figma.com/font/NotoSansSymbols-VF_2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: "Noto Sans:Regular";
+  src: url("https://static.figma.com/font/NotoSans-VF_3") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+}
+
+:root {
+  color: #172b4d;
+  background: #f3f6fa;
+  font-family: "Inter:Regular", Inter, sans-serif;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root,
+.app-screen {
+  min-height: 100%;
+  margin: 0;
+  max-width: 100%;
+}
+
+body {
+  overflow-x: hidden;
+}
+
+.app-screen {
+  min-height: 100dvh;
+  width: 100%;
+}
+
+.app-screen > div[data-name$="screen"],
+.app-screen > div[data-name$="Screen"] {
+  min-height: 100dvh;
+  width: 100%;
+  max-width: 100%;
+}
+
+.app-screen [data-name="Navigation"] p,
+.app-screen [data-name="Button"],
+.app-screen [data-route="master"] {
+  cursor: pointer;
+}
+
+.app-screen [data-name="Navigation"] p,
+.app-screen [data-name="Button"] {
+  transition: filter 150ms ease, opacity 150ms ease;
+}
+
+.app-screen [data-name="Navigation"] p:hover,
+.app-screen [data-name="Button"]:hover {
+  filter: brightness(1.08);
+}
+
+.mobile-topbar,
+.mobile-drawer {
+  display: none;
+}
+
+.mobile-topbar {
+  align-items: center;
+  gap: 12px;
+  height: 56px;
+  padding: 0 16px;
+  background: #102a43;
+  color: #fff;
+  font-size: 14px;
+}
+
+.mobile-menu-btn {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: #29455f;
+  color: #fff;
+  font-size: 18px;
+}
+
+.mobile-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.mobile-drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(15, 39, 64, 0.45);
+}
+
+.mobile-drawer-panel {
+  position: relative;
+  z-index: 1;
+  width: min(280px, 86vw);
+  height: 100%;
+  background: #102a43;
+  color: #d7e2ec;
+  padding: 24px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mobile-drawer-title {
+  color: #fff;
+  font-size: 15px;
+}
+
+.mobile-drawer-subtitle {
+  color: #afc3d6;
+  font-size: 10px;
+  margin-bottom: 12px;
+}
+
+.mobile-nav-item {
+  border: 0;
+  background: transparent;
+  color: #d7e2ec;
+  text-align: left;
+  padding: 10px 8px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.mobile-nav-item.is-active {
+  background: #29455f;
+  color: #65a1ff;
+}
+
+@media (max-width: 1024px) {
+  .app-screen[data-route="login"] {
+    display: block;
+  }
+}
+
+@media (max-width: 860px) {
+  .mobile-topbar {
+    display: flex;
+  }
+
+  .app-screen:not([data-route="login"]) [data-name="Sidebar"] {
+    display: none !important;
+  }
+
+  .app-screen:not([data-route="login"]) [data-name="Workspace"] {
+    min-width: 0 !important;
+    width: 100% !important;
+    min-height: calc(100dvh - 56px) !important;
+    overflow-x: auto;
+  }
+
+  .app-screen:not([data-route="login"]) [data-name="Top bar"] {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+    height: auto !important;
+    min-height: 64px;
+    flex-wrap: wrap;
+    gap: 8px;
+    white-space: normal !important;
+  }
+
+  .mobile-drawer {
+    display: block;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-screen [data-name="Workspace"] > div:last-child {
+    padding: 16px !important;
+  }
+}
