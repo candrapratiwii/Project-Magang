@@ -1,596 +1,632 @@
-const assetPathPrefix = "/assets"
-const imgIndicator = `${assetPathPrefix}/3a5de.svg`
+import { useEffect, useState } from "react";
+import Sidebar from "../Components/Sidebar";
+import { useAuth } from "../auth";
+import {
+  CircleHelp,
+  Download,
+  CircleCheck,
+  ArrowRight,
+  Save,
+  Plus,
+  X,
+} from "lucide-react";
+
+/* ------------------------------ Data ------------------------------ */
+
+interface Katalog {
+  nama: string;
+  satuan: string;
+}
+
+/* Samakan dengan data di Master Barang */
+const katalog: Katalog[] = [
+  { nama: "Kabel LAN Cat6 UTP 305m", satuan: "roll" },
+  { nama: "Konektor RJ45 Cat6", satuan: "pcs" },
+  { nama: "Router MikroTik RB4011", satuan: "unit" },
+  { nama: "Switch Managed 24 Port PoE", satuan: "unit" },
+  { nama: "Access Point Wi-Fi 6", satuan: "unit" },
+  { nama: "SFP Module 1G Single Mode", satuan: "unit" },
+  { nama: "Patch Cord Cat6 1m", satuan: "pcs" },
+  { nama: "Firewall FortiGate 60F", satuan: "unit" },
+  { nama: "UPS 1200VA", satuan: "unit" },
+];
+
+interface Item {
+  nama: string;
+  satuan: string;
+  jumlah: number;
+}
+
+interface Transaksi {
+  nomor: string;
+  tanggal: string;
+  pihak: string;
+  jumlah: string;
+}
+
+const riwayatAwal: Transaksi[] = [
+  {
+    nomor: "BM-2026-0064",
+    tanggal: "05 Okt 2026",
+    pihak: "CV Jaringan Bali",
+    jumlah: "120 pcs",
+  },
+  {
+    nomor: "BM-2026-0063",
+    tanggal: "04 Okt 2026",
+    pihak: "PT Bali Digital",
+    jumlah: "24 unit",
+  },
+  {
+    nomor: "BM-2026-0062",
+    tanggal: "03 Okt 2026",
+    pihak: "Hasil pengadaan",
+    jumlah: "40 pcs",
+  },
+  {
+    nomor: "BM-2026-0061",
+    tanggal: "02 Okt 2026",
+    pihak: "PT Bali Digital",
+    jumlah: "10 unit",
+  },
+];
+
+const DRAF_KEY = "simpera-draf-barang-masuk";
+
+interface Draf {
+  pemasok: string;
+  dokumen: string;
+  keterangan: string;
+  items: Item[];
+}
+
+function bacaDraf(): Draf | null {
+  try {
+    const raw = localStorage.getItem(DRAF_KEY);
+    return raw ? (JSON.parse(raw) as Draf) : null;
+  } catch {
+    return null;
+  }
+}
+
+/* ------------------------------ Util ------------------------------ */
+
+function unduhCsv(rows: Transaksi[]) {
+  const header = ["Nomor", "Tanggal", "Pemasok / sumber", "Jumlah", "Status"];
+  const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
+  const isi = [
+    header,
+    ...rows.map((r) => [r.nomor, r.tanggal, r.pihak, r.jumlah, "Selesai"]),
+  ]
+    .map((r) => r.map(esc).join(";"))
+    .join("\r\n");
+
+  // BOM supaya Excel membaca UTF-8 dengan benar
+  const blob = new Blob(["\uFEFF" + isi], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `barang-masuk-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function ringkasJumlah(items: Item[]) {
+  const total = items.reduce((s, i) => s + i.jumlah, 0);
+  const satuan = Array.from(new Set(items.map((i) => i.satuan)));
+  return satuan.length === 1 ? `${total} ${satuan[0]}` : `${total} item`;
+}
+
+/* --------------------------- Komponen kecil --------------------------- */
+
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+  error,
+  readOnly = false,
+}: {
+  label: string;
+  value: string;
+  onChange?: (v: string) => void;
+  placeholder?: string;
+  error?: string;
+  readOnly?: boolean;
+}) {
+  return (
+    <div className="flex w-full min-w-px flex-[1_0_0] shrink-0 flex-col items-start gap-[7px]">
+      <p className="shrink-0 whitespace-nowrap text-[12px] font-normal not-italic leading-[normal] text-[#172b4d]">
+        {label}
+      </p>
+      <input
+        value={value}
+        readOnly={readOnly}
+        placeholder={placeholder}
+        onChange={(e) => onChange?.(e.target.value)}
+        aria-invalid={!!error}
+        className={`h-[42px] w-full shrink-0 rounded-[8px] border border-solid px-[12px] text-[14px] font-normal not-italic leading-[normal] outline-none placeholder:text-[#94a3b8] ${
+          readOnly
+            ? "border-[#dce4ee] bg-[#f8fafc] text-[#64748b]"
+            : error
+              ? "border-[#c2413a] bg-white text-[#172b4d]"
+              : "border-[#dce4ee] bg-white text-[#172b4d] focus:border-[#1769e0]"
+        }`}
+      />
+      {error && (
+        <p className="text-[11px] font-normal not-italic leading-[normal] text-[#c2413a]">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function StatusSelesai() {
+  return (
+    <div className="flex shrink-0 items-center gap-[5px] overflow-clip rounded-[999px] bg-[#eaf8ef] px-[9px] py-[5px]">
+      <div className="flex size-[12px] shrink-0 items-center justify-center text-[#15803d]">
+        <CircleCheck size={12} />
+      </div>
+      <p className="shrink-0 whitespace-nowrap text-[12px] font-normal not-italic leading-[normal] text-[#15803d]">
+        Selesai
+      </p>
+    </div>
+  );
+}
+
+/* ------------------------------ Halaman ------------------------------ */
 
 export default function BarangMasukScreen() {
+  const { user } = useAuth();
+
+  const drafAwal = bacaDraf();
+
+  const [riwayat, setRiwayat] = useState<Transaksi[]>(riwayatAwal);
+  const [semua, setSemua] = useState(false);
+
+  const [pemasok, setPemasok] = useState(drafAwal?.pemasok ?? "");
+  const [dokumen, setDokumen] = useState(drafAwal?.dokumen ?? "");
+  const [keterangan, setKeterangan] = useState(drafAwal?.keterangan ?? "");
+  const [items, setItems] = useState<Item[]>(drafAwal?.items ?? []);
+  const [adaDraf, setAdaDraf] = useState(drafAwal !== null);
+
+  const [pilihNama, setPilihNama] = useState("");
+  const [pilihJumlah, setPilihJumlah] = useState("");
+  const [errItem, setErrItem] = useState("");
+  const [errors, setErrors] = useState<{
+    pemasok?: string;
+    dokumen?: string;
+    items?: string;
+  }>({});
+  const [toast, setToast] = useState("");
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(""), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const sekarang = new Date();
+  const tanggalPanjang = sekarang.toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+  const tanggalPendek = sekarang.toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+  const waktu =
+    sekarang.toLocaleTimeString("id-ID", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }) + " WITA";
+
+  const urutTerakhir = Math.max(
+    ...riwayat.map((r) => parseInt(r.nomor.split("-").pop() ?? "0", 10)),
+  );
+  const nomorBerikut = `BM-${sekarang.getFullYear()}-${String(urutTerakhir + 1).padStart(4, "0")}`;
+
+  const totalJumlah = items.reduce((s, i) => s + i.jumlah, 0);
+  const tampilRiwayat = semua ? riwayat : riwayat.slice(0, 4);
+
+  const tambahItem = () => {
+    const kat = katalog.find((k) => k.nama === pilihNama);
+    const jml = Number(pilihJumlah);
+    if (!kat || !Number.isInteger(jml) || jml <= 0) {
+      setErrItem("Pilih barang dan isi jumlah (angka bulat lebih dari 0).");
+      return;
+    }
+    setErrItem("");
+    setErrors((e) => ({ ...e, items: undefined }));
+    setItems((prev) => {
+      const ada = prev.find((i) => i.nama === kat.nama);
+      return ada
+        ? prev.map((i) =>
+            i.nama === kat.nama ? { ...i, jumlah: i.jumlah + jml } : i,
+          )
+        : [...prev, { nama: kat.nama, satuan: kat.satuan, jumlah: jml }];
+    });
+    setPilihNama("");
+    setPilihJumlah("");
+  };
+
+  const hapusItem = (nama: string) =>
+    setItems((prev) => prev.filter((i) => i.nama !== nama));
+
+  const resetForm = () => {
+    setPemasok("");
+    setDokumen("");
+    setKeterangan("");
+    setItems([]);
+    setPilihNama("");
+    setPilihJumlah("");
+    setErrItem("");
+    setErrors({});
+  };
+
+  const simpanDraf = () => {
+    if (
+      !pemasok.trim() &&
+      !dokumen.trim() &&
+      !keterangan.trim() &&
+      items.length === 0
+    ) {
+      setToast("Belum ada isian yang bisa disimpan sebagai draf.");
+      return;
+    }
+    try {
+      localStorage.setItem(
+        DRAF_KEY,
+        JSON.stringify({ pemasok, dokumen, keterangan, items }),
+      );
+      setAdaDraf(true);
+      setErrors({});
+      setToast("Draf tersimpan di perangkat ini.");
+    } catch {
+      setToast("Draf gagal disimpan.");
+    }
+  };
+
+  const hapusDraf = () => {
+    try {
+      localStorage.removeItem(DRAF_KEY);
+    } catch {
+      /* abaikan */
+    }
+    setAdaDraf(false);
+    setToast("Draf dihapus.");
+  };
+
+  const simpanTransaksi = () => {
+    const e: typeof errors = {};
+    if (!pemasok.trim()) e.pemasok = "Pemasok / sumber wajib diisi.";
+    if (!dokumen.trim()) e.dokumen = "Nomor dokumen wajib diisi.";
+    if (items.length === 0) e.items = "Tambahkan minimal satu barang.";
+    setErrors(e);
+    if (Object.keys(e).length > 0) return;
+
+    setRiwayat((prev) => [
+      {
+        nomor: nomorBerikut,
+        tanggal: tanggalPendek,
+        pihak: pemasok.trim(),
+        jumlah: ringkasJumlah(items),
+      },
+      ...prev,
+    ]);
+    try {
+      localStorage.removeItem(DRAF_KEY);
+    } catch {
+      /* abaikan */
+    }
+    setAdaDraf(false);
+    resetForm();
+    setSemua(false);
+    setToast(`Transaksi ${nomorBerikut} berhasil disimpan.`);
+  };
+
   return (
-    <div
-      className="bg-[#f3f6fa] content-stretch flex items-start relative size-full"
-      data-node-id="1:701"
-      data-name="Barang Masuk screen"
-    >
-      <div
-        className="bg-[#102a43] content-stretch flex flex-col gap-[22px] items-start min-h-[1024px] overflow-clip pb-[20px] pt-[24px] px-[22px] relative self-stretch shrink-0 w-[244px]"
-        data-node-id="1:702"
-        data-name="Sidebar"
-      >
-        <p
-          className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[15px] text-white w-full"
-          data-node-id="1:703"
-        >
-          SIMPERA-NET
-        </p>
-        <p
-          className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#d5e2ef] text-[12px] w-full"
-          data-node-id="1:704"
-        >
-          Bidang Teknologi dan Informasi
-        </p>
-        <div
-          className="bg-[#29455f] h-px relative shrink-0 w-full"
-          data-node-id="1:705"
-          data-name="Divider"
-        />
-        <div
-          className="[word-break:break-word] content-stretch flex flex-col gap-[18px] items-start leading-[normal] not-italic overflow-clip relative shrink-0 text-[12px] w-full"
-          data-node-id="1:706"
-          data-name="Navigation"
-        >
-          <p
-            className="font-['Inter:Medium'] font-medium relative shrink-0 text-[#d7e2ec] w-full"
-            data-node-id="1:707"
-          >
-            Dashboard
-          </p>
-          <p
-            className="font-['Inter:Medium'] font-medium relative shrink-0 text-[#d7e2ec] w-full"
-            data-node-id="1:708"
-          >
-            Master Barang
-          </p>
-          <p
-            className="font-['Inter:Regular'] font-normal relative shrink-0 text-[#65a1ff] w-full whitespace-pre-wrap"
-            data-node-id="1:709"
-          >{`●  Barang Masuk`}</p>
-          <p
-            className="font-['Inter:Medium'] font-medium relative shrink-0 text-[#d7e2ec] w-full"
-            data-node-id="1:710"
-          >
-            Barang Keluar
-          </p>
-          <p
-            className="font-['Inter:Medium'] font-medium relative shrink-0 text-[#d7e2ec] w-full"
-            data-node-id="1:711"
-          >
-            Stok Opname
-          </p>
-          <p
-            className="font-['Inter:Medium'] font-medium relative shrink-0 text-[#d7e2ec] w-full"
-            data-node-id="1:712"
-          >
-            Laporan
-          </p>
-          <p
-            className="font-['Inter:Medium'] font-medium relative shrink-0 text-[#d7e2ec] w-full"
-            data-node-id="1:713"
-          >
-            Manajemen Pengguna
-          </p>
-        </div>
-      </div>
-      <div
-        className="content-stretch flex flex-[1_0_0] flex-col items-start min-h-[1080px] min-w-px overflow-clip relative"
-        data-node-id="1:714"
-        data-name="Workspace"
-      >
-        <div
-          className="[word-break:break-word] bg-white border-[#dce4ee] border-b border-solid content-stretch flex h-[76px] items-center justify-between leading-[normal] not-italic overflow-clip px-[32px] relative shrink-0 w-full whitespace-nowrap"
-          data-node-id="1:715"
-          data-name="Top bar"
-        >
-          <p
-            className="font-['Inter:Bold'] font-bold relative shrink-0 text-[#172b4d] text-[16px]"
-            data-node-id="1:716"
-          >
+    <div className="relative flex size-full items-start bg-[#f3f6fa]">
+      <Sidebar active="Barang Masuk" />
+
+      <div className="relative flex min-h-[1080px] min-w-px flex-[1_0_0] flex-col items-start overflow-clip">
+        {/* Top bar */}
+        <div className="flex h-[76px] w-full shrink-0 items-center justify-between overflow-clip whitespace-nowrap border-b border-solid border-[#dce4ee] bg-white px-[32px] not-italic leading-[normal]">
+          <p className="shrink-0 text-[16px] font-bold text-[#172b4d]">
             Sistem Persediaan Infrastruktur TIK
           </p>
-          <p
-            className="font-['Inter:Regular'] font-normal relative shrink-0 text-[#64748b] text-[12px]"
-            data-node-id="1:717"
-          >
-            Ayu Pramesti · Admin
+          <p className="shrink-0 text-[12px] font-normal text-[#64748b]">
+            {user?.nama} · {user?.role}
           </p>
         </div>
-        <div
-          className="content-stretch flex flex-col gap-[24px] items-start overflow-clip p-[32px] relative shrink-0 w-full"
-          data-node-id="1:718"
-          data-name="Page content"
-        >
-          <div
-            className="[word-break:break-word] content-stretch flex font-['Inter:Regular'] font-normal items-center justify-between not-italic overflow-clip relative shrink-0 w-full"
-            data-node-id="1:719"
-            data-name="Page heading"
-          >
-            <div
-              className="content-stretch flex flex-[1_0_0] flex-col gap-[5px] items-start leading-[normal] min-w-px overflow-clip relative"
-              data-node-id="1:720"
-              data-name="Heading copy"
-            >
-              <p
-                className="relative shrink-0 text-[#172b4d] text-[26px] w-full"
-                data-node-id="1:721"
-              >
+
+        {/* Page content */}
+        <div className="flex w-full shrink-0 flex-col items-start gap-[24px] overflow-clip p-[32px]">
+          {/* Page heading */}
+          <div className="flex w-full shrink-0 items-center justify-between overflow-clip font-normal not-italic">
+            <div className="flex min-w-px flex-[1_0_0] flex-col items-start gap-[5px] overflow-clip leading-[normal]">
+              <p className="w-full shrink-0 text-[26px] text-[#172b4d]">
                 Barang Masuk
               </p>
-              <p
-                className="relative shrink-0 text-[#64748b] text-[14px] w-full"
-                data-node-id="1:722"
-              >
+              <p className="w-full shrink-0 text-[14px] text-[#64748b]">
                 Catat penerimaan barang dan pantau riwayat stok masuk
               </p>
             </div>
-            <div
-              className="bg-white border border-solid border-white content-stretch flex gap-[8px] h-[40px] items-center justify-center overflow-clip px-[15px] relative rounded-[8px] shrink-0 text-[#64748b]"
-              data-node-id="1:723"
-              data-name="Button"
+            <button
+              type="button"
+              className="flex h-[40px] shrink-0 items-center justify-center gap-[8px] overflow-clip rounded-[8px] border border-solid border-white bg-white px-[15px] text-[#64748b]"
             >
-              <div
-                className="flex flex-col justify-center leading-[0] relative shrink-0 size-[16px] text-[12.8px] text-center"
-                data-node-id="1:724"
-              >
-                <p className="leading-[normal]">◆</p>
-              </div>
-              <p
-                className="leading-[normal] relative shrink-0 text-[14px] whitespace-nowrap"
-                data-node-id="1:725"
-              >
+              <CircleHelp size={16} className="shrink-0" />
+              <span className="shrink-0 whitespace-nowrap text-[14px] leading-[normal]">
                 Panduan
-              </p>
-            </div>
+              </span>
+            </button>
           </div>
-          <div
-            className="content-stretch flex gap-[18px] items-start relative shrink-0 w-full"
-            data-node-id="1:726"
-            data-name="Transaction workspace"
-          >
-            <div
-              className="bg-white border border-[#dce4ee] border-solid content-stretch drop-shadow-[0px_8px_12px_rgba(18,49,79,0.07)] flex flex-col gap-[16px] items-start p-[20px] relative rounded-[12px] shrink-0 w-[430px]"
-              data-node-id="1:727"
-              data-name="Transaction form"
-            >
-              <div
-                className="[word-break:break-word] bg-[#eaf8ef] content-stretch flex flex-col font-['Inter:Regular'] font-normal gap-[5px] items-start leading-[normal] not-italic overflow-clip p-[15px] relative rounded-[8px] shrink-0 w-full whitespace-nowrap"
-                data-node-id="1:728"
-                data-name="Form banner"
-              >
-                <p
-                  className="relative shrink-0 text-[#15803d] text-[15px]"
-                  data-node-id="1:729"
-                >
+
+          {/* Transaction workspace */}
+          <div className="flex w-full shrink-0 items-start gap-[18px]">
+            {/* Transaction form */}
+            <div className="relative flex w-[430px] shrink-0 flex-col items-start gap-[16px] rounded-[12px] border border-solid border-[#dce4ee] bg-white p-[20px] drop-shadow-[0px_8px_12px_rgba(18,49,79,0.07)]">
+              <div className="flex w-full shrink-0 flex-col items-start gap-[5px] overflow-clip whitespace-nowrap rounded-[8px] bg-[#eaf8ef] p-[15px] font-normal not-italic leading-[normal]">
+                <p className="shrink-0 text-[15px] text-[#15803d]">
                   Transaksi masuk baru
                 </p>
-                <p
-                  className="relative shrink-0 text-[#64748b] text-[10px]"
-                  data-node-id="1:730"
-                >
-                  BM-2026-0065 · 05 Oktober 2026
+                <p className="shrink-0 text-[10px] text-[#64748b]">
+                  {nomorBerikut} · {tanggalPanjang}
                 </p>
               </div>
-              <div
-                className="content-stretch flex gap-[10px] items-start overflow-clip relative shrink-0 w-full"
-                data-node-id="1:731"
-                data-name="Date fields"
-              >
-                <div
-                  className="content-stretch flex flex-[1_0_0] flex-col gap-[7px] items-start min-w-px overflow-clip relative"
-                  data-node-id="1:732"
-                  data-name="Field"
-                >
-                  <p
-                    className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#172b4d] text-[12px] whitespace-nowrap"
-                    data-node-id="1:733"
-                  >
-                    Tanggal
+
+              {adaDraf && (
+                <div className="flex w-full shrink-0 items-center justify-between rounded-[8px] bg-[#eaf2ff] px-[12px] py-[8px] font-normal not-italic leading-[normal]">
+                  <p className="text-[11px] text-[#0e4fab]">
+                    Draf tersimpan di perangkat ini
                   </p>
-                  <div
-                    className="bg-white border border-[#dce4ee] border-solid content-stretch flex h-[42px] items-center overflow-clip px-[12px] relative rounded-[8px] shrink-0 w-full"
-                    data-node-id="1:734"
-                    data-name="Input"
+                  <button
+                    type="button"
+                    onClick={hapusDraf}
+                    className="text-[11px] text-[#1769e0] hover:underline"
                   >
-                    <p
-                      className="[word-break:break-word] flex-[1_0_0] font-['Inter:Regular'] font-normal leading-[normal] min-w-px not-italic relative text-[#172b4d] text-[14px]"
-                      data-node-id="1:735"
-                    >
-                      05 Oktober 2026
-                    </p>
-                  </div>
+                    Hapus draf
+                  </button>
                 </div>
-                <div
-                  className="content-stretch flex flex-[1_0_0] flex-col gap-[7px] items-start min-w-px overflow-clip relative"
-                  data-node-id="1:736"
-                  data-name="Field"
-                >
-                  <p
-                    className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#172b4d] text-[12px] whitespace-nowrap"
-                    data-node-id="1:737"
-                  >
-                    Waktu
-                  </p>
-                  <div
-                    className="bg-white border border-[#dce4ee] border-solid content-stretch flex h-[42px] items-center overflow-clip px-[12px] relative rounded-[8px] shrink-0 w-full"
-                    data-node-id="1:738"
-                    data-name="Input"
-                  >
-                    <p
-                      className="[word-break:break-word] flex-[1_0_0] font-['Inter:Regular'] font-normal leading-[normal] min-w-px not-italic relative text-[#172b4d] text-[14px]"
-                      data-node-id="1:739"
-                    >
-                      10.15 WITA
-                    </p>
-                  </div>
-                </div>
+              )}
+
+              <div className="flex w-full shrink-0 items-start gap-[10px]">
+                <Field label="Tanggal" value={tanggalPanjang} readOnly />
+                <Field label="Waktu" value={waktu} readOnly />
               </div>
+
+              <Field
+                label="Pemasok / sumber *"
+                value={pemasok}
+                onChange={(v) => {
+                  setPemasok(v);
+                  setErrors((e) => ({ ...e, pemasok: undefined }));
+                }}
+                placeholder="Contoh: CV Jaringan Bali"
+                error={errors.pemasok}
+              />
+              <Field
+                label="Nomor dokumen *"
+                value={dokumen}
+                onChange={(v) => {
+                  setDokumen(v);
+                  setErrors((e) => ({ ...e, dokumen: undefined }));
+                }}
+                placeholder="Contoh: SJ/CJB/10/2026/184"
+                error={errors.dokumen}
+              />
+
+              {/* Barang terpilih */}
               <div
-                className="content-stretch flex flex-col gap-[7px] items-start overflow-clip relative shrink-0 w-full"
-                data-node-id="1:740"
-                data-name="Field"
+                className={`flex w-full shrink-0 flex-col items-start gap-[10px] rounded-[8px] bg-[#f8fafc] p-[14px] font-normal not-italic text-[#172b4d] ${
+                  errors.items ? "border border-solid border-[#c2413a]" : ""
+                }`}
               >
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#172b4d] text-[12px] whitespace-nowrap"
-                  data-node-id="1:741"
-                >
-                  Pemasok / sumber *
-                </p>
-                <div
-                  className="bg-white border border-[#dce4ee] border-solid content-stretch flex h-[42px] items-center overflow-clip px-[12px] relative rounded-[8px] shrink-0 w-full"
-                  data-node-id="1:742"
-                  data-name="Input"
-                >
-                  <p
-                    className="[word-break:break-word] flex-[1_0_0] font-['Inter:Regular'] font-normal leading-[normal] min-w-px not-italic relative text-[#172b4d] text-[14px]"
-                    data-node-id="1:743"
-                  >
-                    CV Jaringan Bali
-                  </p>
-                </div>
-              </div>
-              <div
-                className="content-stretch flex flex-col gap-[7px] items-start overflow-clip relative shrink-0 w-full"
-                data-node-id="1:744"
-                data-name="Field"
-              >
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#172b4d] text-[12px] whitespace-nowrap"
-                  data-node-id="1:745"
-                >
-                  Nomor dokumen *
-                </p>
-                <div
-                  className="bg-white border border-[#dce4ee] border-solid content-stretch flex h-[42px] items-center overflow-clip px-[12px] relative rounded-[8px] shrink-0 w-full"
-                  data-node-id="1:746"
-                  data-name="Input"
-                >
-                  <p
-                    className="[word-break:break-word] flex-[1_0_0] font-['Inter:Regular'] font-normal leading-[normal] min-w-px not-italic relative text-[#172b4d] text-[14px]"
-                    data-node-id="1:747"
-                  >
-                    SJ/CJB/10/2026/184
-                  </p>
-                </div>
-              </div>
-              <div
-                className="[word-break:break-word] bg-[#f8fafc] content-stretch flex flex-col font-['Inter:Regular'] font-normal gap-[7px] items-start not-italic overflow-clip p-[14px] relative rounded-[8px] shrink-0 text-[#172b4d] w-full"
-                data-node-id="1:748"
-                data-name="Selected items"
-              >
-                <p
-                  className="leading-[normal] relative shrink-0 text-[11px] whitespace-nowrap"
-                  data-node-id="1:749"
-                >
+                <p className="shrink-0 whitespace-nowrap text-[11px] leading-[normal]">
                   BARANG TERPILIH
                 </p>
-                <div
-                  className="leading-[0] min-w-full relative shrink-0 text-[12px] w-[min-content] whitespace-pre-wrap"
-                  data-node-id="1:750"
-                >
-                  <p className="leading-[1.8] mb-0">{`Konektor RJ45 Cat6  —  120 pcs`}</p>
-                  <p className="leading-[1.8]">{`Patch Cord Cat6 1m  —  40 pcs`}</p>
+
+                {items.length === 0 ? (
+                  <p className="text-[12px] leading-[normal] text-[#94a3b8]">
+                    Belum ada barang. Pilih barang di bawah ini.
+                  </p>
+                ) : (
+                  <div className="flex w-full flex-col gap-[6px]">
+                    {items.map((i) => (
+                      <div
+                        key={i.nama}
+                        className="flex w-full items-center justify-between gap-[8px]"
+                      >
+                        <p className="min-w-px flex-[1_0_0] text-[12px] leading-[1.5]">
+                          {i.nama} — {i.jumlah} {i.satuan}
+                        </p>
+                        <button
+                          type="button"
+                          aria-label={`Hapus ${i.nama}`}
+                          onClick={() => hapusItem(i.nama)}
+                          className="flex size-[22px] shrink-0 items-center justify-center rounded-[6px] text-[#64748b] hover:bg-[#fef0ef] hover:text-[#c2413a]"
+                        >
+                          <X size={13} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex w-full items-center gap-[6px]">
+                  <select
+                    value={pilihNama}
+                    onChange={(e) => setPilihNama(e.target.value)}
+                    aria-label="Pilih barang"
+                    className="h-[36px] min-w-px flex-[1_0_0] rounded-[8px] border border-solid border-[#dce4ee] bg-white px-[8px] text-[12px] text-[#172b4d] outline-none focus:border-[#1769e0]"
+                  >
+                    <option value="">Pilih barang...</option>
+                    {katalog.map((k) => (
+                      <option key={k.nama} value={k.nama}>
+                        {k.nama}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min={1}
+                    value={pilihJumlah}
+                    onChange={(e) => setPilihJumlah(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && tambahItem()}
+                    placeholder="Jml"
+                    aria-label="Jumlah"
+                    className="h-[36px] w-[64px] shrink-0 rounded-[8px] border border-solid border-[#dce4ee] bg-white px-[8px] text-[12px] text-[#172b4d] outline-none placeholder:text-[#94a3b8] focus:border-[#1769e0]"
+                  />
+                  <button
+                    type="button"
+                    onClick={tambahItem}
+                    className="flex h-[36px] shrink-0 items-center justify-center gap-[4px] rounded-[8px] border border-solid border-[#1769e0] bg-white px-[10px] text-[12px] text-[#1769e0] hover:bg-[#eaf2ff]"
+                  >
+                    <Plus size={13} />
+                    Tambah item
+                  </button>
                 </div>
+
+                {errItem && (
+                  <p className="text-[11px] leading-[normal] text-[#c2413a]">
+                    {errItem}
+                  </p>
+                )}
+                {errors.items && (
+                  <p className="text-[11px] leading-[normal] text-[#c2413a]">
+                    {errors.items}
+                  </p>
+                )}
               </div>
-              <div
-                className="content-stretch flex flex-col gap-[7px] items-start overflow-clip relative shrink-0 w-full"
-                data-node-id="1:751"
-                data-name="Field"
-              >
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#172b4d] text-[12px] whitespace-nowrap"
-                  data-node-id="1:752"
-                >
+
+              <div className="flex w-full min-w-px flex-[1_0_0] shrink-0 flex-col items-start gap-[7px]">
+                <p className="shrink-0 whitespace-nowrap text-[12px] font-normal not-italic leading-[normal] text-[#172b4d]">
                   Keterangan
                 </p>
-                <div
-                  className="bg-white border border-[#dce4ee] border-solid content-stretch flex h-[42px] items-center overflow-clip px-[12px] relative rounded-[8px] shrink-0 w-full"
-                  data-node-id="1:753"
-                  data-name="Input"
-                >
-                  <p
-                    className="[word-break:break-word] flex-[1_0_0] font-['Inter:Regular'] font-normal leading-[normal] min-w-px not-italic relative text-[#94a3b8] text-[14px]"
-                    data-node-id="1:754"
-                  >
-                    Contoh: Pengadaan tahap II
-                  </p>
-                </div>
+                <input
+                  value={keterangan}
+                  onChange={(e) => setKeterangan(e.target.value)}
+                  placeholder="Contoh: Pengadaan tahap II"
+                  className="h-[42px] w-full shrink-0 rounded-[8px] border border-solid border-[#dce4ee] bg-white px-[12px] text-[14px] font-normal not-italic leading-[normal] text-[#172b4d] outline-none placeholder:text-[#94a3b8] focus:border-[#1769e0]"
+                />
               </div>
-              <div
-                className="[word-break:break-word] bg-[#eaf8ef] content-stretch flex font-['Inter:Regular'] font-normal items-start justify-between leading-[normal] not-italic overflow-clip p-[12px] relative rounded-[8px] shrink-0 w-full whitespace-nowrap"
-                data-node-id="1:755"
-                data-name="Summary"
-              >
-                <p
-                  className="relative shrink-0 text-[#64748b] text-[11px]"
-                  data-node-id="1:756"
-                >
+
+              <div className="flex w-full shrink-0 items-start justify-between overflow-clip whitespace-nowrap rounded-[8px] bg-[#eaf8ef] p-[12px] font-normal not-italic leading-[normal]">
+                <p className="shrink-0 text-[11px] text-[#64748b]">
                   Total transaksi
                 </p>
-                <p
-                  className="relative shrink-0 text-[#15803d] text-[13px]"
-                  data-node-id="1:757"
-                >
-                  160 pcs · 2 jenis
+                <p className="shrink-0 text-[13px] text-[#15803d]">
+                  {totalJumlah} item · {items.length} jenis
                 </p>
               </div>
-              <div
-                className="content-stretch flex gap-[8px] items-start overflow-clip relative shrink-0 w-full"
-                data-node-id="1:758"
-                data-name="Actions"
-              >
-                <div
-                  className="bg-white border border-[#dce4ee] border-solid content-stretch flex flex-[1_0_0] h-[40px] items-center justify-center min-w-px overflow-clip px-[15px] relative rounded-[8px]"
-                  data-node-id="1:759"
-                  data-name="Button"
+
+              <div className="flex w-full shrink-0 items-start gap-[8px] overflow-clip">
+                <button
+                  type="button"
+                  onClick={simpanDraf}
+                  className="flex h-[40px] min-w-px flex-[1_0_0] cursor-pointer items-center justify-center overflow-clip rounded-[8px] border border-solid border-[#dce4ee] bg-white px-[15px] hover:bg-[#f3f6fa]"
                 >
-                  <p
-                    className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#1769e0] text-[14px] whitespace-nowrap"
-                    data-node-id="1:760"
-                  >
+                  <span className="shrink-0 whitespace-nowrap text-[14px] font-normal not-italic leading-[normal] text-[#1769e0]">
                     Simpan draf
-                  </p>
-                </div>
-                <div
-                  className="[word-break:break-word] bg-[#1769e0] border border-[#1769e0] border-solid content-stretch flex flex-[1_0_0] font-['Inter:Regular'] font-normal gap-[8px] h-[40px] items-center justify-center min-w-px not-italic overflow-clip px-[15px] relative rounded-[8px] text-white"
-                  data-node-id="1:761"
-                  data-name="Button"
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={simpanTransaksi}
+                  className="flex h-[40px] min-w-px flex-[1_0_0] cursor-pointer items-center justify-center gap-[8px] overflow-clip rounded-[8px] border border-solid border-[#1769e0] bg-[#1769e0] px-[15px] font-normal not-italic text-white hover:bg-[#0e4fab]"
                 >
-                  <div
-                    className="flex flex-col justify-center leading-[0] relative shrink-0 size-[16px] text-[12.8px] text-center"
-                    data-node-id="1:762"
-                  >
-                    <p className="leading-[normal]">◆</p>
-                  </div>
-                  <p
-                    className="leading-[normal] relative shrink-0 text-[14px] whitespace-nowrap"
-                    data-node-id="1:763"
-                  >
+                  <Save size={16} className="shrink-0" />
+                  <span className="shrink-0 whitespace-nowrap text-[14px] leading-[normal]">
                     Simpan transaksi
-                  </p>
-                </div>
+                  </span>
+                </button>
               </div>
             </div>
-            <div
-              className="bg-white border border-[#dce4ee] border-solid content-stretch drop-shadow-[0px_8px_12px_rgba(18,49,79,0.07)] flex flex-[1_0_0] flex-col items-start min-w-px relative rounded-[12px]"
-              data-node-id="1:764"
-              data-name="Transaction history"
-            >
-              <div
-                className="[word-break:break-word] content-stretch flex font-['Inter:Regular'] font-normal items-center justify-between not-italic overflow-clip p-[18px] relative shrink-0 w-full"
-                data-node-id="1:765"
-                data-name="History heading"
-              >
-                <div
-                  className="content-stretch flex flex-col gap-[3px] items-start leading-[normal] overflow-clip relative shrink-0 whitespace-nowrap"
-                  data-node-id="1:766"
-                  data-name="Copy"
-                >
-                  <p
-                    className="relative shrink-0 text-[#172b4d] text-[15px]"
-                    data-node-id="1:767"
-                  >
+
+            {/* Transaction history */}
+            <div className="relative flex min-w-px flex-[1_0_0] flex-col items-start rounded-[12px] border border-solid border-[#dce4ee] bg-white drop-shadow-[0px_8px_12px_rgba(18,49,79,0.07)]">
+              <div className="flex w-full shrink-0 items-center justify-between overflow-clip p-[18px] font-normal not-italic">
+                <div className="flex shrink-0 flex-col items-start gap-[3px] overflow-clip whitespace-nowrap leading-[normal]">
+                  <p className="shrink-0 text-[15px] text-[#172b4d]">
                     Riwayat barang masuk
                   </p>
-                  <p
-                    className="relative shrink-0 text-[#64748b] text-[10px]"
-                    data-node-id="1:768"
-                  >
+                  <p className="shrink-0 text-[10px] text-[#64748b]">
                     Oktober 2026 · semua petugas
                   </p>
                 </div>
-                <div
-                  className="bg-white border border-[#dce4ee] border-solid content-stretch flex gap-[8px] h-[40px] items-center justify-center overflow-clip px-[15px] relative rounded-[8px] shrink-0 text-[#1769e0]"
-                  data-node-id="1:769"
-                  data-name="Button"
+                <button
+                  type="button"
+                  onClick={() => unduhCsv(riwayat)}
+                  title={`Unduh ${riwayat.length} transaksi (CSV)`}
+                  className="flex h-[40px] shrink-0 cursor-pointer items-center justify-center gap-[8px] overflow-clip rounded-[8px] border border-solid border-[#dce4ee] bg-white px-[15px] text-[#1769e0] hover:bg-[#f3f6fa]"
                 >
-                  <div
-                    className="flex flex-col justify-center leading-[0] relative shrink-0 size-[16px] text-[12.8px] text-center"
-                    data-node-id="1:770"
-                  >
-                    <p className="leading-[normal]">◆</p>
-                  </div>
-                  <p
-                    className="leading-[normal] relative shrink-0 text-[14px] whitespace-nowrap"
-                    data-node-id="1:771"
-                  >
+                  <Download size={16} className="shrink-0" />
+                  <span className="shrink-0 whitespace-nowrap text-[14px] leading-[normal]">
                     Ekspor
-                  </p>
-                </div>
+                  </span>
+                </button>
               </div>
-              <div
-                className="[word-break:break-word] bg-[#f8fafc] border-[#dce4ee] border-b border-solid content-stretch flex font-['Inter:Regular'] font-normal gap-[12px] h-[42px] items-center leading-[normal] not-italic px-[16px] relative shrink-0 text-[#64748b] text-[11px] uppercase w-full"
-                data-node-id="1:772"
-                data-name="Table header"
-              >
-                <p
-                  className="flex-[1_0_0] min-w-px relative"
-                  data-node-id="1:773"
-                >
+
+              <div className="flex h-[42px] w-full shrink-0 items-center gap-[12px] border-b border-solid border-[#dce4ee] bg-[#f8fafc] px-[16px] text-[11px] font-normal uppercase not-italic leading-[normal] text-[#64748b]">
+                <p className="min-w-px flex-[1_0_0]">
                   Nomor · tanggal · pihak · jumlah
                 </p>
-                <p className="relative shrink-0 w-[100px]" data-node-id="1:774">
-                  Status
+                <p className="w-[100px] shrink-0">Status</p>
+              </div>
+
+              {tampilRiwayat.map((r) => (
+                <div
+                  key={r.nomor}
+                  className="flex h-[62px] w-full shrink-0 items-center gap-[12px] overflow-clip border-b border-solid border-[#dce4ee] px-[16px]"
+                >
+                  <p className="min-w-px flex-[1_0_0] whitespace-pre-wrap text-[11px] font-normal not-italic leading-[normal] text-[#172b4d]">
+                    {`${r.nomor}  •  ${r.tanggal}  •  ${r.pihak}  •  ${r.jumlah}`}
+                  </p>
+                  <div className="flex w-[100px] shrink-0 items-start overflow-clip">
+                    <StatusSelesai />
+                  </div>
+                </div>
+              ))}
+
+              <div className="flex w-full shrink-0 items-center justify-between overflow-clip whitespace-nowrap p-[16px] text-[10px] not-italic leading-[normal]">
+                <p className="shrink-0 font-normal text-[#64748b]">
+                  {semua
+                    ? `${riwayat.length} transaksi`
+                    : `${tampilRiwayat.length} transaksi terbaru`}
                 </p>
-              </div>
-              <div
-                className="border-[#dce4ee] border-b border-solid content-stretch flex h-[62px] items-center justify-between overflow-clip px-[16px] relative shrink-0 w-full"
-                data-node-id="1:775"
-                data-name="History row"
-              >
-                <p
-                  className="[word-break:break-word] flex-[1_0_0] font-['Inter:Regular'] font-normal leading-[normal] min-w-px not-italic relative text-[#172b4d] text-[11px] whitespace-pre-wrap"
-                  data-node-id="1:776"
-                >{`BM-2026-0064  •  05 Okt 2026  •  CV Jaringan Bali  •  120 pcs`}</p>
-                <div
-                  className="bg-[#eaf8ef] content-stretch flex gap-[5px] items-center overflow-clip px-[9px] py-[5px] relative rounded-[999px] shrink-0"
-                  data-node-id="1:777"
-                  data-name="Status"
-                >
-                  <div
-                    className="relative shrink-0 size-[6px]"
-                    data-node-id="1:778"
-                    data-name="Indicator"
+                {riwayat.length > 4 && (
+                  <button
+                    type="button"
+                    onClick={() => setSemua((v) => !v)}
+                    className="flex shrink-0 cursor-pointer items-center gap-[4px] font-bold text-[#15803d] hover:underline"
                   >
-                    <img
-                      alt=""
-                      className="absolute block inset-0 max-w-none size-full"
-                      src={imgIndicator}
-                    />
-                  </div>
-                  <p
-                    className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#15803d] text-[12px] whitespace-nowrap"
-                    data-node-id="1:779"
-                  >
-                    Selesai
-                  </p>
-                </div>
-              </div>
-              <div
-                className="border-[#dce4ee] border-b border-solid content-stretch flex h-[62px] items-center justify-between overflow-clip px-[16px] relative shrink-0 w-full"
-                data-node-id="1:780"
-                data-name="History row"
-              >
-                <p
-                  className="[word-break:break-word] flex-[1_0_0] font-['Inter:Regular'] font-normal leading-[normal] min-w-px not-italic relative text-[#172b4d] text-[11px] whitespace-pre-wrap"
-                  data-node-id="1:781"
-                >{`BM-2026-0063  •  04 Okt 2026  •  PT Bali Digital  •  24 unit`}</p>
-                <div
-                  className="bg-[#eaf8ef] content-stretch flex gap-[5px] items-center overflow-clip px-[9px] py-[5px] relative rounded-[999px] shrink-0"
-                  data-node-id="1:782"
-                  data-name="Status"
-                >
-                  <div
-                    className="relative shrink-0 size-[6px]"
-                    data-node-id="1:783"
-                    data-name="Indicator"
-                  >
-                    <img
-                      alt=""
-                      className="absolute block inset-0 max-w-none size-full"
-                      src={imgIndicator}
-                    />
-                  </div>
-                  <p
-                    className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#15803d] text-[12px] whitespace-nowrap"
-                    data-node-id="1:784"
-                  >
-                    Selesai
-                  </p>
-                </div>
-              </div>
-              <div
-                className="border-[#dce4ee] border-b border-solid content-stretch flex h-[62px] items-center justify-between overflow-clip px-[16px] relative shrink-0 w-full"
-                data-node-id="1:785"
-                data-name="History row"
-              >
-                <p
-                  className="[word-break:break-word] flex-[1_0_0] font-['Inter:Regular'] font-normal leading-[normal] min-w-px not-italic relative text-[#172b4d] text-[11px] whitespace-pre-wrap"
-                  data-node-id="1:786"
-                >{`BM-2026-0062  •  03 Okt 2026  •  Hasil pengadaan  •  40 pcs`}</p>
-                <div
-                  className="bg-[#eaf8ef] content-stretch flex gap-[5px] items-center overflow-clip px-[9px] py-[5px] relative rounded-[999px] shrink-0"
-                  data-node-id="1:787"
-                  data-name="Status"
-                >
-                  <div
-                    className="relative shrink-0 size-[6px]"
-                    data-node-id="1:788"
-                    data-name="Indicator"
-                  >
-                    <img
-                      alt=""
-                      className="absolute block inset-0 max-w-none size-full"
-                      src={imgIndicator}
-                    />
-                  </div>
-                  <p
-                    className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#15803d] text-[12px] whitespace-nowrap"
-                    data-node-id="1:789"
-                  >
-                    Selesai
-                  </p>
-                </div>
-              </div>
-              <div
-                className="border-[#dce4ee] border-b border-solid content-stretch flex h-[62px] items-center justify-between overflow-clip px-[16px] relative shrink-0 w-full"
-                data-node-id="1:790"
-                data-name="History row"
-              >
-                <p
-                  className="[word-break:break-word] flex-[1_0_0] font-['Inter:Regular'] font-normal leading-[normal] min-w-px not-italic relative text-[#172b4d] text-[11px] whitespace-pre-wrap"
-                  data-node-id="1:791"
-                >{`BM-2026-0061  •  02 Okt 2026  •  PT Bali Digital  •  10 unit`}</p>
-                <div
-                  className="bg-[#eaf8ef] content-stretch flex gap-[5px] items-center overflow-clip px-[9px] py-[5px] relative rounded-[999px] shrink-0"
-                  data-node-id="1:792"
-                  data-name="Status"
-                >
-                  <div
-                    className="relative shrink-0 size-[6px]"
-                    data-node-id="1:793"
-                    data-name="Indicator"
-                  >
-                    <img
-                      alt=""
-                      className="absolute block inset-0 max-w-none size-full"
-                      src={imgIndicator}
-                    />
-                  </div>
-                  <p
-                    className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#15803d] text-[12px] whitespace-nowrap"
-                    data-node-id="1:794"
-                  >
-                    Selesai
-                  </p>
-                </div>
-              </div>
-              <div
-                className="[word-break:break-word] content-stretch flex items-start justify-between leading-[normal] not-italic overflow-clip p-[16px] relative shrink-0 text-[10px] w-full whitespace-nowrap"
-                data-node-id="1:795"
-                data-name="History footer"
-              >
-                <p
-                  className="font-['Inter:Regular'] font-normal relative shrink-0 text-[#64748b]"
-                  data-node-id="1:796"
-                >
-                  4 transaksi terbaru
-                </p>
-                <p
-                  className="font-['Inter:Bold'] font-bold relative shrink-0 text-[#15803d]"
-                  data-node-id="1:797"
-                >
-                  Lihat semua →
-                </p>
+                    {semua ? "Lihat lebih sedikit" : "Lihat semua"}
+                    {!semua && <ArrowRight size={12} />}
+                  </button>
+                )}
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Notifikasi */}
+      {toast && (
+        <div
+          role="status"
+          className="fixed bottom-[24px] right-[24px] z-50 max-w-[360px] rounded-[10px] bg-[#172b4d] px-[16px] py-[12px] shadow-lg"
+        >
+          <p className="text-[13px] font-normal not-italic leading-[1.4] text-white">
+            {toast}
+          </p>
+        </div>
+      )}
     </div>
-  )
+  );
 }

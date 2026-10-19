@@ -1,974 +1,555 @@
-const assetPathPrefix = "/assets"
-const imgIndicator = `${assetPathPrefix}/e693b.svg`
-const imgIndicator1 = `${assetPathPrefix}/9f710.svg`
+import { useEffect, useState, type ReactNode } from "react";
+import { useAuth } from "../auth";
+import {
+  Boxes,
+  Package,
+  PackagePlus,
+  PackageMinus,
+  PieChart,
+  TriangleAlert,
+  CircleAlert,
+  ClipboardCheck,
+  X,
+  type LucideIcon,
+} from "lucide-react";
+import Sidebar from "../Components/Sidebar";
 
-export default function DashboardScreen() {
+const assetPathPrefix = "/assets";
+const imgIndicator1 = `${assetPathPrefix}/9f710.svg`;
+
+/* ------------------------------ Data ------------------------------ */
+
+const stokKategori = [
+  { nama: "Material jaringan", jumlah: 1460, warna: "#1769e0" },
+  { nama: "Perangkat jaringan", jumlah: 612, warna: "#0891b2" },
+  { nama: "Perangkat pendukung", jumlah: 435, warna: "#7c3aed" },
+  { nama: "Kabel & aksesori", jumlah: 340, warna: "#15803d" },
+];
+
+const totalStok = stokKategori.reduce((sum, k) => sum + k.jumlah, 0);
+const RADIUS = 70;
+const KELILING = 2 * Math.PI * RADIUS;
+
+let akumulasi = 0;
+const segmenDonut = stokKategori.map((k) => {
+  const panjang = (k.jumlah / totalStok) * KELILING;
+  const segmen = { ...k, panjang, offset: akumulasi };
+  akumulasi += panjang;
+  return segmen;
+});
+
+interface Metric {
+  label: string;
+  value: string;
+  note: string;
+  icon: LucideIcon;
+  iconBg: string;
+  iconColor: string;
+}
+
+const metrics: Metric[] = [
+  {
+    label: "Total jenis barang",
+    value: "42",
+    note: "+3 sejak bulan lalu",
+    icon: Boxes,
+    iconBg: "#eaf2ff",
+    iconColor: "#1769e0",
+  },
+  {
+    label: "Total stok tersedia",
+    value: "2.847",
+    note: "unit di 4 lokasi",
+    icon: Package,
+    iconBg: "#e6f7fa",
+    iconColor: "#0891b2",
+  },
+  {
+    label: "Barang masuk bulan ini",
+    value: "386",
+    note: "+18,4% dari September",
+    icon: PackagePlus,
+    iconBg: "#eaf8ef",
+    iconColor: "#15803d",
+  },
+  {
+    label: "Barang keluar bulan ini",
+    value: "241",
+    note: "37 transaksi tercatat",
+    icon: PackageMinus,
+    iconBg: "#fef0ef",
+    iconColor: "#c2413a",
+  },
+];
+
+const stokRendah = [
+  {
+    nama: "SFP Module 1G Single Mode",
+    kode: "NET-SFP-001 · Rak B-03",
+    stok: "4 unit",
+    min: "minimum 10",
+  },
+  {
+    nama: "Konektor RJ45 Cat6",
+    kode: "MAT-RJ45-006 · Bin A-12",
+    stok: "28 pcs",
+    min: "minimum 50",
+  },
+  {
+    nama: "Patch Cord Cat6 1m",
+    kode: "MAT-PC-001 · Rak A-05",
+    stok: "12 pcs",
+    min: "minimum 20",
+  },
+];
+
+interface Aktivitas {
+  judul: string;
+  detail: string;
+  waktu: string;
+  icon: LucideIcon;
+  bg: string;
+  color: string;
+}
+
+const aktivitas: Aktivitas[] = [
+  {
+    judul: "Barang keluar #BK-2026-0108",
+    detail: "8 Access Point · Bidang Aptika",
+    waktu: "10 menit lalu",
+    icon: PackageMinus,
+    bg: "#f2ecff",
+    color: "#7c3aed",
+  },
+  {
+    judul: "Barang masuk #BM-2026-0064",
+    detail: "120 Konektor RJ45 Cat6 · CV Jaringan Bali",
+    waktu: "42 menit lalu",
+    icon: PackagePlus,
+    bg: "#eaf8ef",
+    color: "#15803d",
+  },
+  {
+    judul: "Stok opname diselesaikan",
+    detail: "Periode Oktober 2026 · selisih 2 item",
+    waktu: "2 jam lalu",
+    icon: ClipboardCheck,
+    bg: "#eaf2ff",
+    color: "#1769e0",
+  },
+  {
+    judul: "Barang keluar #BK-2026-0107",
+    detail: "35 Patch Cord Cat6 · UPTD Jaringan",
+    waktu: "04 Okt 2026",
+    icon: PackageMinus,
+    bg: "#f2ecff",
+    color: "#7c3aed",
+  },
+  {
+    judul: "Barang masuk #BM-2026-0063",
+    detail: "24 SFP Module 1G · PT Bali Digital",
+    waktu: "04 Okt 2026",
+    icon: PackagePlus,
+    bg: "#eaf8ef",
+    color: "#15803d",
+  },
+  {
+    judul: "Barang keluar #BK-2026-0106",
+    detail: "2 Switch 24 Port · Sekretariat",
+    waktu: "03 Okt 2026",
+    icon: PackageMinus,
+    bg: "#f2ecff",
+    color: "#7c3aed",
+  },
+  {
+    judul: "Barang masuk #BM-2026-0062",
+    detail: "40 Patch Cord Cat6 1m · Hasil pengadaan",
+    waktu: "03 Okt 2026",
+    icon: PackagePlus,
+    bg: "#eaf8ef",
+    color: "#15803d",
+  },
+];
+
+type ModalAktif = "stok" | "aktivitas" | null;
+
+/* ----------------------------- Komponen ----------------------------- */
+
+function MetricCard({ m }: { m: Metric }) {
+  const Icon = m.icon;
   return (
-    <div
-      className="bg-[#f3f6fa] content-stretch flex items-start relative size-full"
-      data-node-id="1:60"
-      data-name="Dashboard screen"
-    >
-      <div
-        className="bg-[#102a43] content-stretch flex flex-col gap-[22px] items-start min-h-[1024px] overflow-clip pb-[20px] pt-[24px] px-[22px] relative self-stretch shrink-0 w-[244px]"
-        data-node-id="1:61"
-        data-name="Sidebar"
-      >
-        <p
-          className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[15px] text-white w-full"
-          data-node-id="1:62"
-        >
-          SIMPERA-NET
-        </p>
-        <p
-          className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[1.5] not-italic relative shrink-0 text-[#afc3d6] text-[10px] w-full"
-          data-node-id="1:63"
-        >
-          Sistem Persediaan Infrastruktur TIK
+    <div className="relative flex min-w-px flex-[1_0_0] flex-col items-start gap-[14px] rounded-[12px] border border-solid border-[#dce4ee] bg-white p-[18px] drop-shadow-[0px_8px_12px_rgba(18,49,79,0.07)]">
+      <div className="flex w-full shrink-0 items-center justify-between overflow-clip">
+        <p className="min-w-px flex-[1_0_0] text-[12px] font-normal not-italic leading-[normal] text-[#64748b]">
+          {m.label}
         </p>
         <div
-          className="bg-[#29455f] h-px relative shrink-0 w-full"
-          data-node-id="1:64"
-          data-name="Divider"
-        />
-        <div
-          className="[word-break:break-word] content-stretch flex flex-col gap-[18px] items-start leading-[normal] not-italic overflow-clip relative shrink-0 text-[12px] w-full"
-          data-node-id="1:65"
-          data-name="Navigation"
-        >
-          <p
-            className="font-['Inter:Regular'] font-normal relative shrink-0 text-[#65a1ff] w-full whitespace-pre-wrap"
-            data-node-id="1:66"
-          >{`●  Dashboard`}</p>
-          <p
-            className="font-['Inter:Medium'] font-medium relative shrink-0 text-[#d7e2ec] w-full"
-            data-node-id="1:67"
-          >
-            Master Barang
-          </p>
-          <p
-            className="font-['Inter:Medium'] font-medium relative shrink-0 text-[#d7e2ec] w-full"
-            data-node-id="1:68"
-          >
-            Barang Masuk
-          </p>
-          <p
-            className="font-['Inter:Medium'] font-medium relative shrink-0 text-[#d7e2ec] w-full"
-            data-node-id="1:69"
-          >
-            Barang Keluar
-          </p>
-          <p
-            className="font-['Inter:Medium'] font-medium relative shrink-0 text-[#d7e2ec] w-full"
-            data-node-id="1:70"
-          >
-            Stok Opname
-          </p>
-          <p
-            className="font-['Inter:Medium'] font-medium relative shrink-0 text-[#d7e2ec] w-full"
-            data-node-id="1:71"
-          >
-            Laporan
-          </p>
-          <p
-            className="font-['Inter:Medium'] font-medium relative shrink-0 text-[#d7e2ec] w-full"
-            data-node-id="1:72"
-          >
-            Manajemen Pengguna
-          </p>
-        </div>
-      </div>
-      <div
-        className="content-stretch flex flex-[1_0_0] flex-col items-start min-h-[1120px] min-w-px overflow-clip relative"
-        data-node-id="1:73"
-        data-name="Workspace"
-      >
-        <div
-          className="[word-break:break-word] bg-white border-[#dce4ee] border-b border-solid content-stretch flex h-[76px] items-center justify-between leading-[normal] not-italic overflow-clip px-[32px] relative shrink-0 w-full whitespace-nowrap"
-          data-node-id="1:74"
-          data-name="Top bar"
-        >
-          <p
-            className="font-['Inter:Bold'] font-bold relative shrink-0 text-[#172b4d] text-[16px]"
-            data-node-id="1:75"
-          >
-            Sistem Persediaan Infrastruktur TIK
-          </p>
-          <p
-            className="font-['Inter:Regular'] font-normal relative shrink-0 text-[#64748b] text-[12px]"
-            data-node-id="1:76"
-          >
-            Ayu Pramesti · Admin
-          </p>
-        </div>
-        <div
-          className="content-stretch flex flex-col gap-[24px] items-start overflow-clip p-[32px] relative shrink-0 w-full"
-          data-node-id="1:77"
-          data-name="Page content"
+          className="flex size-[34px] shrink-0 items-center justify-center overflow-clip rounded-[8px]"
+          style={{ backgroundColor: m.iconBg }}
         >
           <div
-            className="[word-break:break-word] content-stretch flex font-['Inter:Regular'] font-normal items-center justify-between not-italic overflow-clip relative shrink-0 w-full"
-            data-node-id="1:78"
-            data-name="Page heading"
+            className="flex size-[17px] shrink-0 items-center justify-center"
+            style={{ color: m.iconColor }}
           >
-            <div
-              className="content-stretch flex flex-[1_0_0] flex-col gap-[5px] items-start leading-[normal] min-w-px overflow-clip relative"
-              data-node-id="1:79"
-              data-name="Heading copy"
-            >
-              <p
-                className="relative shrink-0 text-[#172b4d] text-[26px] w-full"
-                data-node-id="1:80"
-              >
+            <Icon size={17} />
+          </div>
+        </div>
+      </div>
+      <p className="w-full shrink-0 text-[30px] font-normal not-italic leading-[normal] text-[#172b4d]">
+        {m.value}
+      </p>
+      <p className="w-full shrink-0 text-[11px] font-normal not-italic leading-[normal] text-[#64748b]">
+        {m.note}
+      </p>
+    </div>
+  );
+}
+
+function AktivitasItem({ a }: { a: Aktivitas }) {
+  const Icon = a.icon;
+  return (
+    <div className="flex w-full shrink-0 items-start gap-[12px] overflow-clip border-b border-solid border-[#dce4ee] py-[12px]">
+      <div
+        className="flex size-[34px] shrink-0 items-center justify-center overflow-clip rounded-[999px]"
+        style={{ backgroundColor: a.bg }}
+      >
+        <div
+          className="flex size-[16px] shrink-0 items-center justify-center"
+          style={{ color: a.color }}
+        >
+          <Icon size={16} />
+        </div>
+      </div>
+      <div className="flex min-w-px flex-[1_0_0] flex-col items-start gap-[4px] overflow-clip not-italic leading-[normal]">
+        <p className="w-full shrink-0 text-[12px] font-bold text-[#172b4d]">
+          {a.judul}
+        </p>
+        <p className="w-full shrink-0 text-[11px] font-normal text-[#64748b]">
+          {a.detail}
+        </p>
+      </div>
+      <p className="w-[90px] shrink-0 text-right text-[10px] font-normal not-italic leading-[normal] text-[#94a3b8]">
+        {a.waktu}
+      </p>
+    </div>
+  );
+}
+
+function Modal({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#172b4d]/40 p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+    >
+      <div
+        className="max-h-[85vh] w-full max-w-[520px] overflow-auto rounded-[12px] bg-white p-[24px] shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-[16px] flex items-center justify-between">
+          <p className="text-[18px] text-[#172b4d]">{title}</p>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Tutup"
+            className="flex size-[28px] items-center justify-center rounded-[6px] hover:bg-[#f3f6fa]"
+          >
+            <X size={18} className="text-[#64748b]" />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/* ----------------------------- Dashboard ----------------------------- */
+
+export default function DashboardScreen() {
+  const { user } = useAuth();
+  const [modal, setModal] = useState<ModalAktif>(null);
+  const tutup = () => setModal(null);
+
+  return (
+    <div className="relative flex size-full items-start bg-[#f3f6fa]">
+      <Sidebar active="Dashboard" />
+
+      <div className="relative flex min-h-[1120px] min-w-px flex-[1_0_0] flex-col items-start overflow-clip">
+        {/* Top bar */}
+        <div className="flex h-[76px] w-full shrink-0 items-center justify-between overflow-clip whitespace-nowrap border-b border-solid border-[#dce4ee] bg-white px-[32px] not-italic leading-[normal]">
+          <p className="shrink-0 text-[16px] font-bold text-[#172b4d]">
+            Sistem Persediaan Infrastruktur TIK
+          </p>
+          <p className="shrink-0 text-[12px] font-normal text-[#64748b]">
+            {user?.nama} · {user?.role}
+          </p>
+        </div>
+
+        {/* Page content */}
+        <div className="flex w-full shrink-0 flex-col items-start gap-[24px] overflow-clip p-[32px]">
+          {/* Page heading */}
+          <div className="flex w-full shrink-0 items-center justify-between font-normal not-italic">
+            <div className="flex min-w-px flex-[1_0_0] flex-col items-start gap-[5px] overflow-clip leading-[normal]">
+              <p className="w-full shrink-0 text-[26px] text-[#172b4d]">
                 Dashboard
               </p>
-              <p
-                className="relative shrink-0 text-[#64748b] text-[14px] w-full"
-                data-node-id="1:81"
-              >
+              <p className="w-full shrink-0 text-[14px] text-[#64748b]">
                 Ringkasan kondisi persediaan per 5 Oktober 2026, 09.30 WITA
               </p>
             </div>
-            <div
-              className="bg-[#1769e0] border border-[#1769e0] border-solid content-stretch flex gap-[8px] h-[40px] items-center justify-center overflow-clip px-[15px] relative rounded-[8px] shrink-0 text-white"
-              data-node-id="1:82"
-              data-name="Button"
-            >
-              <div
-                className="flex flex-col justify-center leading-[0] relative shrink-0 size-[16px] text-[12.8px] text-center"
-                data-node-id="1:83"
-              >
-                <p className="leading-[normal]">+</p>
-              </div>
-              <p
-                className="leading-[normal] relative shrink-0 text-[14px] whitespace-nowrap"
-                data-node-id="1:84"
-              >
-                Catat transaksi
-              </p>
-            </div>
           </div>
-          <div
-            className="content-stretch flex gap-[14px] items-start relative shrink-0 w-full"
-            data-node-id="1:85"
-            data-name="Key performance indicators"
-          >
-            <div
-              className="bg-white border border-[#dce4ee] border-solid content-stretch drop-shadow-[0px_8px_12px_rgba(18,49,79,0.07)] flex flex-[1_0_0] flex-col gap-[14px] items-start min-w-px p-[18px] relative rounded-[12px]"
-              data-node-id="1:86"
-              data-name="Metric card"
-            >
-              <div
-                className="content-stretch flex items-center justify-between overflow-clip relative shrink-0 w-full"
-                data-node-id="1:87"
-                data-name="Metric heading"
-              >
-                <p
-                  className="[word-break:break-word] flex-[1_0_0] font-['Inter:Regular'] font-normal leading-[normal] min-w-px not-italic relative text-[#64748b] text-[12px]"
-                  data-node-id="1:88"
-                >
-                  Total jenis barang
-                </p>
-                <div
-                  className="bg-[#eaf2ff] content-stretch flex items-center justify-center overflow-clip relative rounded-[8px] shrink-0 size-[34px]"
-                  data-node-id="1:89"
-                  data-name="Icon background"
-                >
-                  <div
-                    className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[17px] text-[#1769e0] text-[13.6px] text-center"
-                    data-node-id="1:90"
-                  >
-                    <p className="leading-[normal]">⌕</p>
-                  </div>
-                </div>
-              </div>
-              <p
-                className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#172b4d] text-[30px] w-full"
-                data-node-id="1:91"
-              >
-                42
-              </p>
-              <p
-                className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#64748b] text-[11px] w-full"
-                data-node-id="1:92"
-              >
-                +3 sejak bulan lalu
-              </p>
-            </div>
-            <div
-              className="bg-white border border-[#dce4ee] border-solid content-stretch drop-shadow-[0px_8px_12px_rgba(18,49,79,0.07)] flex flex-[1_0_0] flex-col gap-[14px] items-start min-w-px p-[18px] relative rounded-[12px]"
-              data-node-id="1:93"
-              data-name="Metric card"
-            >
-              <div
-                className="content-stretch flex items-center justify-between overflow-clip relative shrink-0 w-full"
-                data-node-id="1:94"
-                data-name="Metric heading"
-              >
-                <p
-                  className="[word-break:break-word] flex-[1_0_0] font-['Inter:Regular'] font-normal leading-[normal] min-w-px not-italic relative text-[#64748b] text-[12px]"
-                  data-node-id="1:95"
-                >
-                  Total stok tersedia
-                </p>
-                <div
-                  className="bg-[#e6f7fa] content-stretch flex items-center justify-center overflow-clip relative rounded-[8px] shrink-0 size-[34px]"
-                  data-node-id="1:96"
-                  data-name="Icon background"
-                >
-                  <div
-                    className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[17px] text-[#0891b2] text-[13.6px] text-center"
-                    data-node-id="1:97"
-                  >
-                    <p className="leading-[normal]">◆</p>
-                  </div>
-                </div>
-              </div>
-              <p
-                className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#172b4d] text-[30px] w-full"
-                data-node-id="1:98"
-              >
-                2.847
-              </p>
-              <p
-                className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#64748b] text-[11px] w-full"
-                data-node-id="1:99"
-              >
-                unit di 4 lokasi
-              </p>
-            </div>
-            <div
-              className="bg-white border border-[#dce4ee] border-solid content-stretch drop-shadow-[0px_8px_12px_rgba(18,49,79,0.07)] flex flex-[1_0_0] flex-col gap-[14px] items-start min-w-px p-[18px] relative rounded-[12px]"
-              data-node-id="1:100"
-              data-name="Metric card"
-            >
-              <div
-                className="content-stretch flex items-center justify-between overflow-clip relative shrink-0 w-full"
-                data-node-id="1:101"
-                data-name="Metric heading"
-              >
-                <p
-                  className="[word-break:break-word] flex-[1_0_0] font-['Inter:Regular'] font-normal leading-[normal] min-w-px not-italic relative text-[#64748b] text-[12px]"
-                  data-node-id="1:102"
-                >
-                  Barang masuk bulan ini
-                </p>
-                <div
-                  className="bg-[#eaf8ef] content-stretch flex items-center justify-center overflow-clip relative rounded-[8px] shrink-0 size-[34px]"
-                  data-node-id="1:103"
-                  data-name="Icon background"
-                >
-                  <div
-                    className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[17px] text-[#15803d] text-[13.6px] text-center"
-                    data-node-id="1:104"
-                  >
-                    <p className="leading-[normal]">›</p>
-                  </div>
-                </div>
-              </div>
-              <p
-                className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#172b4d] text-[30px] w-full"
-                data-node-id="1:105"
-              >
-                386
-              </p>
-              <p
-                className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#64748b] text-[11px] w-full"
-                data-node-id="1:106"
-              >
-                +18,4% dari September
-              </p>
-            </div>
-            <div
-              className="bg-white border border-[#dce4ee] border-solid content-stretch drop-shadow-[0px_8px_12px_rgba(18,49,79,0.07)] flex flex-[1_0_0] flex-col gap-[14px] items-start min-w-px p-[18px] relative rounded-[12px]"
-              data-node-id="1:107"
-              data-name="Metric card"
-            >
-              <div
-                className="content-stretch flex items-center justify-between overflow-clip relative shrink-0 w-full"
-                data-node-id="1:108"
-                data-name="Metric heading"
-              >
-                <p
-                  className="[word-break:break-word] flex-[1_0_0] font-['Inter:Regular'] font-normal leading-[normal] min-w-px not-italic relative text-[#64748b] text-[12px]"
-                  data-node-id="1:109"
-                >
-                  Barang keluar bulan ini
-                </p>
-                <div
-                  className="bg-[#f2ecff] content-stretch flex items-center justify-center overflow-clip relative rounded-[8px] shrink-0 size-[34px]"
-                  data-node-id="1:110"
-                  data-name="Icon background"
-                >
-                  <div
-                    className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[17px] text-[#7c3aed] text-[13.6px] text-center"
-                    data-node-id="1:111"
-                  >
-                    <p className="leading-[normal]">›</p>
-                  </div>
-                </div>
-              </div>
-              <p
-                className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#172b4d] text-[30px] w-full"
-                data-node-id="1:112"
-              >
-                241
-              </p>
-              <p
-                className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#64748b] text-[11px] w-full"
-                data-node-id="1:113"
-              >
-                37 transaksi tercatat
-              </p>
-            </div>
+
+          {/* KPI */}
+          <div className="flex w-full shrink-0 items-start gap-[14px]">
+            {metrics.map((m) => (
+              <MetricCard key={m.label} m={m} />
+            ))}
           </div>
-          <div
-            className="bg-[#fef0ef] border border-[#f3c6c2] border-solid content-stretch flex flex-col gap-[16px] items-start overflow-clip p-[20px] relative rounded-[12px] shrink-0 w-full"
-            data-node-id="1:114"
-            data-name="Stock alert"
-          >
-            <div
-              className="content-stretch flex items-center justify-between overflow-clip relative shrink-0 w-full"
-              data-node-id="1:115"
-              data-name="Alert heading"
-            >
-              <div
-                className="content-stretch flex gap-[12px] items-center overflow-clip relative shrink-0"
-                data-node-id="1:116"
-                data-name="Alert copy"
-              >
-                <div
-                  className="bg-[#c2413a] content-stretch flex items-center justify-center overflow-clip relative rounded-[8px] shrink-0 size-[38px]"
-                  data-node-id="1:117"
-                  data-name="Alert icon"
-                >
-                  <div
-                    className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[20px] text-[16px] text-center text-white"
-                    data-node-id="1:118"
-                  >
-                    <p className="leading-[normal]">!</p>
+
+          {/* Stock alert */}
+          <div className="flex w-full shrink-0 flex-col items-start gap-[16px] overflow-clip rounded-[12px] border border-solid border-[#f3c6c2] bg-[#fef0ef] p-[20px]">
+            <div className="flex w-full shrink-0 items-center justify-between overflow-clip">
+              <div className="flex shrink-0 items-center gap-[12px] overflow-clip">
+                <div className="flex size-[38px] shrink-0 items-center justify-center overflow-clip rounded-[8px] bg-[#c2413a]">
+                  <div className="flex size-[20px] shrink-0 items-center justify-center text-white">
+                    <TriangleAlert size={20} />
                   </div>
                 </div>
-                <div
-                  className="[word-break:break-word] content-stretch flex flex-col font-['Inter:Regular'] font-normal gap-[3px] items-start leading-[normal] not-italic overflow-clip relative shrink-0 whitespace-nowrap"
-                  data-node-id="1:119"
-                  data-name="Message"
-                >
-                  <p
-                    className="relative shrink-0 text-[#c2413a] text-[15px]"
-                    data-node-id="1:120"
-                  >
-                    3 barang di bawah stok minimum
+                <div className="flex shrink-0 flex-col items-start gap-[3px] overflow-clip whitespace-nowrap font-normal not-italic leading-[normal]">
+                  <p className="shrink-0 text-[15px] text-[#c2413a]">
+                    {stokRendah.length} barang di bawah stok minimum
                   </p>
-                  <p
-                    className="relative shrink-0 text-[#8b433e] text-[12px]"
-                    data-node-id="1:121"
-                  >
+                  <p className="shrink-0 text-[12px] text-[#8b433e]">
                     Segera tindak lanjuti agar operasional jaringan tidak
                     terganggu.
                   </p>
                 </div>
               </div>
-              <div
-                className="[word-break:break-word] bg-white border border-[#dce4ee] border-solid content-stretch flex font-['Inter:Regular'] font-normal gap-[8px] h-[40px] items-center justify-center not-italic overflow-clip px-[15px] relative rounded-[8px] shrink-0 text-[#1769e0]"
-                data-node-id="1:122"
-                data-name="Button"
+              <button
+                type="button"
+                onClick={() => setModal("stok")}
+                className="flex h-[40px] shrink-0 cursor-pointer items-center justify-center gap-[8px] overflow-clip rounded-[8px] border border-solid border-[#dce4ee] bg-white px-[15px] font-normal not-italic text-[#1769e0] hover:bg-[#f3f6fa]"
               >
-                <div
-                  className="flex flex-col justify-center leading-[0] relative shrink-0 size-[16px] text-[12.8px] text-center"
-                  data-node-id="1:123"
-                >
-                  <p className="leading-[normal]">›</p>
-                </div>
-                <p
-                  className="leading-[normal] relative shrink-0 text-[14px] whitespace-nowrap"
-                  data-node-id="1:124"
-                >
+                <span className="flex size-[16px] shrink-0 items-center justify-center text-center text-[12.8px] leading-[0]">
+                  <span className="leading-[normal]">›</span>
+                </span>
+                <span className="shrink-0 whitespace-nowrap text-[14px] leading-[normal]">
                   Lihat semua
-                </p>
-              </div>
+                </span>
+              </button>
             </div>
-            <div
-              className="content-stretch flex gap-[10px] items-start overflow-clip relative shrink-0 w-full"
-              data-node-id="1:125"
-              data-name="Low stock items"
-            >
-              <div
-                className="bg-white content-stretch flex flex-[1_0_0] flex-col gap-[9px] items-start min-w-px overflow-clip p-[14px] relative rounded-[8px]"
-                data-node-id="1:126"
-                data-name="Low stock item"
-              >
+
+            <div className="flex w-full shrink-0 items-start gap-[10px] overflow-clip">
+              {stokRendah.map((item) => (
                 <div
-                  className="content-stretch flex items-center justify-between overflow-clip relative shrink-0 w-full"
-                  data-node-id="1:127"
-                  data-name="Item heading"
+                  key={item.kode}
+                  className="flex min-w-px flex-[1_0_0] flex-col items-start gap-[9px] overflow-clip rounded-[8px] bg-white p-[14px]"
                 >
-                  <p
-                    className="[word-break:break-word] flex-[1_0_0] font-['Inter:Bold'] font-bold leading-[normal] min-w-px not-italic overflow-hidden relative text-[#172b4d] text-[12px] text-ellipsis whitespace-nowrap"
-                    data-node-id="1:128"
-                  >
-                    SFP Module 1G Single Mode
-                  </p>
-                  <div
-                    className="bg-[#fef0ef] content-stretch flex gap-[5px] items-center overflow-clip px-[9px] py-[5px] relative rounded-[999px] shrink-0"
-                    data-node-id="1:129"
-                    data-name="Status"
-                  >
-                    <div
-                      className="relative shrink-0 size-[6px]"
-                      data-node-id="1:130"
-                      data-name="Indicator"
-                    >
-                      <img
-                        alt=""
-                        className="absolute block inset-0 max-w-none size-full"
-                        src={imgIndicator}
-                      />
+                  <div className="flex w-full shrink-0 items-center justify-between overflow-clip">
+                    <p className="min-w-px flex-[1_0_0] overflow-hidden text-ellipsis whitespace-nowrap text-[12px] font-bold not-italic leading-[normal] text-[#172b4d]">
+                      {item.nama}
+                    </p>
+                    <div className="flex shrink-0 items-center gap-[5px] overflow-clip rounded-[999px] bg-[#fef0ef] px-[9px] py-[5px]">
+                      <div className="flex size-[12px] shrink-0 items-center justify-center text-[#c2413a]">
+                        <CircleAlert size={12} />
+                      </div>
+                      <p className="shrink-0 whitespace-nowrap text-[12px] font-normal not-italic leading-[normal] text-[#c2413a]">
+                        Kritis
+                      </p>
                     </div>
-                    <p
-                      className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#c2413a] text-[12px] whitespace-nowrap"
-                      data-node-id="1:131"
-                    >
-                      Kritis
+                  </div>
+                  <p className="w-full shrink-0 text-[10px] font-normal not-italic leading-[normal] text-[#64748b]">
+                    {item.kode}
+                  </p>
+                  <div className="flex w-full shrink-0 items-baseline justify-between overflow-clip whitespace-nowrap font-normal not-italic leading-[normal]">
+                    <p className="shrink-0 text-[17px] text-[#c2413a]">
+                      {item.stok}
+                    </p>
+                    <p className="shrink-0 text-[10px] text-[#64748b]">
+                      {item.min}
                     </p>
                   </div>
                 </div>
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#64748b] text-[10px] w-full"
-                  data-node-id="1:132"
-                >
-                  NET-SFP-001 · Rak B-03
-                </p>
-                <div
-                  className="[word-break:break-word] content-stretch flex font-['Inter:Regular'] font-normal items-baseline justify-between leading-[normal] not-italic overflow-clip relative shrink-0 w-full whitespace-nowrap"
-                  data-node-id="1:133"
-                  data-name="Stock values"
-                >
-                  <p
-                    className="relative shrink-0 text-[#c2413a] text-[17px]"
-                    data-node-id="1:134"
-                  >
-                    4 unit
-                  </p>
-                  <p
-                    className="relative shrink-0 text-[#64748b] text-[10px]"
-                    data-node-id="1:135"
-                  >
-                    minimum 10
-                  </p>
-                </div>
-              </div>
-              <div
-                className="bg-white content-stretch flex flex-[1_0_0] flex-col gap-[9px] items-start min-w-px overflow-clip p-[14px] relative rounded-[8px]"
-                data-node-id="1:136"
-                data-name="Low stock item"
-              >
-                <div
-                  className="content-stretch flex items-center justify-between overflow-clip relative shrink-0 w-full"
-                  data-node-id="1:137"
-                  data-name="Item heading"
-                >
-                  <p
-                    className="[word-break:break-word] flex-[1_0_0] font-['Inter:Bold'] font-bold leading-[normal] min-w-px not-italic overflow-hidden relative text-[#172b4d] text-[12px] text-ellipsis whitespace-nowrap"
-                    data-node-id="1:138"
-                  >
-                    Konektor RJ45 Cat6
-                  </p>
-                  <div
-                    className="bg-[#fef0ef] content-stretch flex gap-[5px] items-center overflow-clip px-[9px] py-[5px] relative rounded-[999px] shrink-0"
-                    data-node-id="1:139"
-                    data-name="Status"
-                  >
-                    <div
-                      className="relative shrink-0 size-[6px]"
-                      data-node-id="1:140"
-                      data-name="Indicator"
-                    >
-                      <img
-                        alt=""
-                        className="absolute block inset-0 max-w-none size-full"
-                        src={imgIndicator}
-                      />
-                    </div>
-                    <p
-                      className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#c2413a] text-[12px] whitespace-nowrap"
-                      data-node-id="1:141"
-                    >
-                      Kritis
-                    </p>
-                  </div>
-                </div>
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#64748b] text-[10px] w-full"
-                  data-node-id="1:142"
-                >
-                  MAT-RJ45-006 · Bin A-12
-                </p>
-                <div
-                  className="[word-break:break-word] content-stretch flex font-['Inter:Regular'] font-normal items-baseline justify-between leading-[normal] not-italic overflow-clip relative shrink-0 w-full whitespace-nowrap"
-                  data-node-id="1:143"
-                  data-name="Stock values"
-                >
-                  <p
-                    className="relative shrink-0 text-[#c2413a] text-[17px]"
-                    data-node-id="1:144"
-                  >
-                    28 pcs
-                  </p>
-                  <p
-                    className="relative shrink-0 text-[#64748b] text-[10px]"
-                    data-node-id="1:145"
-                  >
-                    minimum 50
-                  </p>
-                </div>
-              </div>
-              <div
-                className="bg-white content-stretch flex flex-[1_0_0] flex-col gap-[9px] items-start min-w-px overflow-clip p-[14px] relative rounded-[8px]"
-                data-node-id="1:146"
-                data-name="Low stock item"
-              >
-                <div
-                  className="content-stretch flex items-center justify-between overflow-clip relative shrink-0 w-full"
-                  data-node-id="1:147"
-                  data-name="Item heading"
-                >
-                  <p
-                    className="[word-break:break-word] flex-[1_0_0] font-['Inter:Bold'] font-bold leading-[normal] min-w-px not-italic overflow-hidden relative text-[#172b4d] text-[12px] text-ellipsis whitespace-nowrap"
-                    data-node-id="1:148"
-                  >
-                    Patch Cord Cat6 1m
-                  </p>
-                  <div
-                    className="bg-[#fef0ef] content-stretch flex gap-[5px] items-center overflow-clip px-[9px] py-[5px] relative rounded-[999px] shrink-0"
-                    data-node-id="1:149"
-                    data-name="Status"
-                  >
-                    <div
-                      className="relative shrink-0 size-[6px]"
-                      data-node-id="1:150"
-                      data-name="Indicator"
-                    >
-                      <img
-                        alt=""
-                        className="absolute block inset-0 max-w-none size-full"
-                        src={imgIndicator}
-                      />
-                    </div>
-                    <p
-                      className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#c2413a] text-[12px] whitespace-nowrap"
-                      data-node-id="1:151"
-                    >
-                      Kritis
-                    </p>
-                  </div>
-                </div>
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#64748b] text-[10px] w-full"
-                  data-node-id="1:152"
-                >
-                  MAT-PC-001 · Rak A-05
-                </p>
-                <div
-                  className="[word-break:break-word] content-stretch flex font-['Inter:Regular'] font-normal items-baseline justify-between leading-[normal] not-italic overflow-clip relative shrink-0 w-full whitespace-nowrap"
-                  data-node-id="1:153"
-                  data-name="Stock values"
-                >
-                  <p
-                    className="relative shrink-0 text-[#c2413a] text-[17px]"
-                    data-node-id="1:154"
-                  >
-                    12 pcs
-                  </p>
-                  <p
-                    className="relative shrink-0 text-[#64748b] text-[10px]"
-                    data-node-id="1:155"
-                  >
-                    minimum 20
-                  </p>
-                </div>
-              </div>
+              ))}
             </div>
           </div>
-          <div
-            className="content-stretch flex gap-[16px] items-start relative shrink-0 w-full"
-            data-node-id="1:156"
-            data-name="Operational overview"
-          >
-            <div
-              className="bg-white border border-[#dce4ee] border-solid content-stretch drop-shadow-[0px_8px_12px_rgba(18,49,79,0.07)] flex flex-[1_0_0] flex-col gap-[18px] items-start min-w-px p-[20px] relative rounded-[12px]"
-              data-node-id="1:157"
-              data-name="Stock by category"
-            >
-              <div
-                className="content-stretch flex items-center justify-between overflow-clip relative shrink-0 w-full"
-                data-node-id="1:158"
-                data-name="Card heading"
-              >
-                <div
-                  className="[word-break:break-word] content-stretch flex flex-col font-['Inter:Regular'] font-normal gap-[3px] items-start leading-[normal] not-italic overflow-clip relative shrink-0 whitespace-nowrap"
-                  data-node-id="1:159"
-                  data-name="Heading copy"
-                >
-                  <p
-                    className="relative shrink-0 text-[#172b4d] text-[16px]"
-                    data-node-id="1:160"
-                  >
+
+          {/* Operational overview */}
+          <div className="flex w-full shrink-0 items-start gap-[16px]">
+            {/* Stok per kategori */}
+            <div className="relative flex min-w-px flex-[1_0_0] flex-col items-start gap-[18px] rounded-[12px] border border-solid border-[#dce4ee] bg-white p-[20px] drop-shadow-[0px_8px_12px_rgba(18,49,79,0.07)]">
+              <div className="flex w-full shrink-0 items-center justify-between overflow-clip">
+                <div className="flex shrink-0 flex-col items-start gap-[3px] overflow-clip whitespace-nowrap font-normal not-italic leading-[normal]">
+                  <p className="shrink-0 text-[16px] text-[#172b4d]">
                     Stok per kategori
                   </p>
-                  <p
-                    className="relative shrink-0 text-[#64748b] text-[11px]"
-                    data-node-id="1:161"
-                  >
+                  <p className="shrink-0 text-[11px] text-[#64748b]">
                     Total unit tersedia saat ini
                   </p>
                 </div>
-                <div
-                  className="bg-[#eaf2ff] content-stretch flex gap-[5px] items-center overflow-clip px-[9px] py-[5px] relative rounded-[999px] shrink-0"
-                  data-node-id="1:162"
-                  data-name="Status"
-                >
-                  <div
-                    className="relative shrink-0 size-[6px]"
-                    data-node-id="1:163"
-                    data-name="Indicator"
-                  >
+                <div className="flex shrink-0 items-center gap-[5px] overflow-clip rounded-[999px] bg-[#eaf2ff] px-[9px] py-[5px]">
+                  <div className="relative size-[6px] shrink-0">
                     <img
                       alt=""
-                      className="absolute block inset-0 max-w-none size-full"
+                      className="absolute inset-0 block size-full max-w-none"
                       src={imgIndicator1}
                     />
                   </div>
-                  <p
-                    className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#1769e0] text-[12px] whitespace-nowrap"
-                    data-node-id="1:164"
-                  >
-                    2.847 unit
+                  <p className="shrink-0 whitespace-nowrap text-[12px] font-normal not-italic leading-[normal] text-[#1769e0]">
+                    {totalStok.toLocaleString("id-ID")} unit
                   </p>
                 </div>
               </div>
-              <div
-                className="content-stretch flex flex-col gap-[16px] items-start overflow-clip relative shrink-0 w-full"
-                data-node-id="1:165"
-                data-name="Category chart"
-              >
-                <div
-                  className="content-stretch flex flex-col gap-[7px] items-start overflow-clip relative shrink-0 w-full"
-                  data-node-id="1:166"
-                  data-name="Category row"
-                >
-                  <div
-                    className="[word-break:break-word] content-stretch flex items-start justify-between leading-[normal] not-italic overflow-clip relative shrink-0 text-[#172b4d] text-[12px] w-full whitespace-nowrap"
-                    data-node-id="1:167"
-                    data-name="Labels"
-                  >
-                    <p
-                      className="font-['Inter:Semi_Bold'] font-semibold relative shrink-0"
-                      data-node-id="1:168"
-                    >
-                      Material jaringan
-                    </p>
-                    <p
-                      className="font-['Inter:Bold'] font-bold relative shrink-0"
-                      data-node-id="1:169"
-                    >
-                      1.460 unit
-                    </p>
-                  </div>
-                  <div
-                    className="bg-[#f8fafc] content-stretch flex h-[8px] items-start overflow-clip relative rounded-[999px] shrink-0 w-full"
-                    data-node-id="1:170"
-                    data-name="Bar track"
-                  >
-                    <div
-                      className="bg-[#1769e0] h-[8px] relative rounded-[999px] shrink-0 w-[410px]"
-                      data-node-id="1:171"
-                      data-name="Bar"
+
+              {/* Donut chart */}
+              <div className="flex w-full flex-col items-center gap-[16px]">
+                <div className="relative size-[180px]">
+                  <svg viewBox="0 0 180 180" className="size-full">
+                    <circle
+                      cx="90"
+                      cy="90"
+                      r={RADIUS}
+                      fill="none"
+                      stroke="#f1f5f9"
+                      strokeWidth="22"
                     />
+                    <g transform="rotate(-90 90 90)">
+                      {segmenDonut.map((s) => (
+                        <circle
+                          key={s.nama}
+                          cx="90"
+                          cy="90"
+                          r={RADIUS}
+                          fill="none"
+                          stroke={s.warna}
+                          strokeWidth="22"
+                          strokeDasharray={`${Math.max(s.panjang - 2, 0)} ${KELILING}`}
+                          strokeDashoffset={-s.offset}
+                        >
+                          <title>{`${s.nama}: ${s.jumlah.toLocaleString("id-ID")} unit`}</title>
+                        </circle>
+                      ))}
+                    </g>
+                  </svg>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <p className="text-[24px] leading-none text-[#172b4d]">
+                      {totalStok.toLocaleString("id-ID")}
+                    </p>
+                    <p className="mt-1 text-[11px] text-[#64748b]">
+                      total unit
+                    </p>
                   </div>
                 </div>
-                <div
-                  className="content-stretch flex flex-col gap-[7px] items-start overflow-clip relative shrink-0 w-full"
-                  data-node-id="1:172"
-                  data-name="Category row"
-                >
-                  <div
-                    className="[word-break:break-word] content-stretch flex items-start justify-between leading-[normal] not-italic overflow-clip relative shrink-0 text-[#172b4d] text-[12px] w-full whitespace-nowrap"
-                    data-node-id="1:173"
-                    data-name="Labels"
-                  >
-                    <p
-                      className="font-['Inter:Semi_Bold'] font-semibold relative shrink-0"
-                      data-node-id="1:174"
-                    >
-                      Perangkat jaringan
-                    </p>
-                    <p
-                      className="font-['Inter:Bold'] font-bold relative shrink-0"
-                      data-node-id="1:175"
-                    >
-                      612 unit
-                    </p>
-                  </div>
-                  <div
-                    className="bg-[#f8fafc] content-stretch flex h-[8px] items-start overflow-clip relative rounded-[999px] shrink-0 w-full"
-                    data-node-id="1:176"
-                    data-name="Bar track"
-                  >
-                    <div
-                      className="bg-[#0891b2] h-[8px] relative rounded-[999px] shrink-0 w-[245px]"
-                      data-node-id="1:177"
-                      data-name="Bar"
-                    />
-                  </div>
-                </div>
-                <div
-                  className="content-stretch flex flex-col gap-[7px] items-start overflow-clip relative shrink-0 w-full"
-                  data-node-id="1:178"
-                  data-name="Category row"
-                >
-                  <div
-                    className="[word-break:break-word] content-stretch flex items-start justify-between leading-[normal] not-italic overflow-clip relative shrink-0 text-[#172b4d] text-[12px] w-full whitespace-nowrap"
-                    data-node-id="1:179"
-                    data-name="Labels"
-                  >
-                    <p
-                      className="font-['Inter:Semi_Bold'] font-semibold relative shrink-0"
-                      data-node-id="1:180"
-                    >
-                      Perangkat pendukung
-                    </p>
-                    <p
-                      className="font-['Inter:Bold'] font-bold relative shrink-0"
-                      data-node-id="1:181"
-                    >
-                      435 unit
-                    </p>
-                  </div>
-                  <div
-                    className="bg-[#f8fafc] content-stretch flex h-[8px] items-start overflow-clip relative rounded-[999px] shrink-0 w-full"
-                    data-node-id="1:182"
-                    data-name="Bar track"
-                  >
-                    <div
-                      className="bg-[#7c3aed] h-[8px] relative rounded-[999px] shrink-0 w-[178px]"
-                      data-node-id="1:183"
-                      data-name="Bar"
-                    />
-                  </div>
-                </div>
-                <div
-                  className="content-stretch flex flex-col gap-[7px] items-start overflow-clip relative shrink-0 w-full"
-                  data-node-id="1:184"
-                  data-name="Category row"
-                >
-                  <div
-                    className="[word-break:break-word] content-stretch flex items-start justify-between leading-[normal] not-italic overflow-clip relative shrink-0 text-[#172b4d] text-[12px] w-full whitespace-nowrap"
-                    data-node-id="1:185"
-                    data-name="Labels"
-                  >
-                    <p
-                      className="font-['Inter:Semi_Bold'] font-semibold relative shrink-0"
-                      data-node-id="1:186"
-                    >{`Kabel & aksesori`}</p>
-                    <p
-                      className="font-['Inter:Bold'] font-bold relative shrink-0"
-                      data-node-id="1:187"
-                    >
-                      340 unit
-                    </p>
-                  </div>
-                  <div
-                    className="bg-[#f8fafc] content-stretch flex h-[8px] items-start overflow-clip relative rounded-[999px] shrink-0 w-full"
-                    data-node-id="1:188"
-                    data-name="Bar track"
-                  >
-                    <div
-                      className="bg-[#15803d] h-[8px] relative rounded-[999px] shrink-0 w-[138px]"
-                      data-node-id="1:189"
-                      data-name="Bar"
-                    />
-                  </div>
+
+                {/* Legenda */}
+                <div className="grid w-full grid-cols-2 gap-x-4 gap-y-3">
+                  {stokKategori.map((k) => (
+                    <div key={k.nama} className="flex items-center gap-2">
+                      <span
+                        className="size-[10px] shrink-0 rounded-[3px]"
+                        style={{ backgroundColor: k.warna }}
+                      />
+                      <div className="min-w-0">
+                        <p className="truncate text-[12px] text-[#172b4d]">
+                          {k.nama}
+                        </p>
+                        <p className="text-[11px] text-[#64748b]">
+                          {k.jumlah.toLocaleString("id-ID")} unit ·{" "}
+                          {Math.round((k.jumlah / totalStok) * 100)}%
+                        </p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-              <div
-                className="[word-break:break-word] bg-[#eaf2ff] content-stretch flex font-['Inter:Regular'] font-normal gap-[9px] items-start not-italic overflow-clip p-[12px] relative rounded-[8px] shrink-0 w-full"
-                data-node-id="1:190"
-                data-name="Category insight"
-              >
-                <div
-                  className="flex flex-col justify-center leading-[0] relative shrink-0 size-[16px] text-[#1769e0] text-[12.8px] text-center"
-                  data-node-id="1:191"
-                >
-                  <p className="leading-[normal]">◆</p>
+
+              <div className="flex w-full shrink-0 items-start gap-[9px] overflow-clip rounded-[8px] bg-[#eaf2ff] p-[12px] font-normal not-italic">
+                <div className="flex size-[16px] shrink-0 items-center justify-center text-[#1769e0]">
+                  <PieChart size={16} />
                 </div>
-                <p
-                  className="flex-[1_0_0] leading-[1.4] min-w-px relative text-[#0e4fab] text-[11px]"
-                  data-node-id="1:192"
-                >
+                <p className="min-w-px flex-[1_0_0] text-[11px] leading-[1.4] text-[#0e4fab]">
                   Material jaringan mencakup 51% dari total persediaan aktif.
                 </p>
               </div>
             </div>
-            <div
-              className="bg-white border border-[#dce4ee] border-solid content-stretch drop-shadow-[0px_8px_12px_rgba(18,49,79,0.07)] flex flex-[1_0_0] flex-col gap-[16px] items-start min-w-px p-[20px] relative rounded-[12px]"
-              data-node-id="1:193"
-              data-name="Recent activity"
-            >
-              <div
-                className="[word-break:break-word] content-stretch flex font-['Inter:Regular'] font-normal items-center justify-between leading-[normal] not-italic overflow-clip relative shrink-0 w-full whitespace-nowrap"
-                data-node-id="1:194"
-                data-name="Card heading"
-              >
-                <p
-                  className="relative shrink-0 text-[#172b4d] text-[16px]"
-                  data-node-id="1:195"
-                >
+
+            {/* Aktivitas terbaru */}
+            <div className="relative flex min-w-px flex-[1_0_0] flex-col items-start gap-[16px] rounded-[12px] border border-solid border-[#dce4ee] bg-white p-[20px] drop-shadow-[0px_8px_12px_rgba(18,49,79,0.07)]">
+              <div className="flex w-full shrink-0 items-center justify-between overflow-clip whitespace-nowrap font-normal not-italic leading-[normal]">
+                <p className="shrink-0 text-[16px] text-[#172b4d]">
                   Aktivitas terbaru
                 </p>
-                <p
-                  className="relative shrink-0 text-[#1769e0] text-[11px]"
-                  data-node-id="1:196"
+                <button
+                  type="button"
+                  onClick={() => setModal("aktivitas")}
+                  className="shrink-0 cursor-pointer text-[11px] text-[#1769e0] hover:underline"
                 >
                   Lihat semua
-                </p>
+                </button>
               </div>
-              <div
-                className="content-stretch flex flex-col items-start overflow-clip relative shrink-0 w-full"
-                data-node-id="1:197"
-                data-name="Activity list"
-              >
-                <div
-                  className="border-[#dce4ee] border-b border-solid content-stretch flex gap-[12px] items-start overflow-clip py-[12px] relative shrink-0 w-full"
-                  data-node-id="1:198"
-                  data-name="Activity"
-                >
-                  <div
-                    className="bg-[#f2ecff] content-stretch flex items-center justify-center overflow-clip relative rounded-[999px] shrink-0 size-[34px]"
-                    data-node-id="1:199"
-                    data-name="Activity icon"
-                  >
-                    <div
-                      className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[16px] text-[#7c3aed] text-[12.8px] text-center"
-                      data-node-id="1:200"
-                    >
-                      <p className="leading-[normal]">−</p>
-                    </div>
-                  </div>
-                  <div
-                    className="[word-break:break-word] content-stretch flex flex-[1_0_0] flex-col gap-[4px] items-start leading-[normal] min-w-px not-italic overflow-clip relative"
-                    data-node-id="1:201"
-                    data-name="Activity copy"
-                  >
-                    <p
-                      className="font-['Inter:Bold'] font-bold relative shrink-0 text-[#172b4d] text-[12px] w-full"
-                      data-node-id="1:202"
-                    >
-                      Barang keluar #BK-2026-0108
-                    </p>
-                    <p
-                      className="font-['Inter:Regular'] font-normal relative shrink-0 text-[#64748b] text-[11px] w-full"
-                      data-node-id="1:203"
-                    >
-                      8 Access Point · Bidang Aptika
-                    </p>
-                  </div>
-                  <p
-                    className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#94a3b8] text-[10px] text-right w-[90px]"
-                    data-node-id="1:204"
-                  >
-                    10 menit lalu
-                  </p>
-                </div>
-                <div
-                  className="border-[#dce4ee] border-b border-solid content-stretch flex gap-[12px] items-start overflow-clip py-[12px] relative shrink-0 w-full"
-                  data-node-id="1:205"
-                  data-name="Activity"
-                >
-                  <div
-                    className="bg-[#eaf8ef] content-stretch flex items-center justify-center overflow-clip relative rounded-[999px] shrink-0 size-[34px]"
-                    data-node-id="1:206"
-                    data-name="Activity icon"
-                  >
-                    <div
-                      className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[16px] text-[#15803d] text-[12.8px] text-center"
-                      data-node-id="1:207"
-                    >
-                      <p className="leading-[normal]">+</p>
-                    </div>
-                  </div>
-                  <div
-                    className="[word-break:break-word] content-stretch flex flex-[1_0_0] flex-col gap-[4px] items-start leading-[normal] min-w-px not-italic overflow-clip relative"
-                    data-node-id="1:208"
-                    data-name="Activity copy"
-                  >
-                    <p
-                      className="font-['Inter:Bold'] font-bold relative shrink-0 text-[#172b4d] text-[12px] w-full"
-                      data-node-id="1:209"
-                    >
-                      Barang masuk #BM-2026-0064
-                    </p>
-                    <p
-                      className="font-['Inter:Regular'] font-normal relative shrink-0 text-[#64748b] text-[11px] w-full"
-                      data-node-id="1:210"
-                    >
-                      120 Konektor RJ45 Cat6 · CV Jaringan Bali
-                    </p>
-                  </div>
-                  <p
-                    className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#94a3b8] text-[10px] text-right w-[90px]"
-                    data-node-id="1:211"
-                  >
-                    42 menit lalu
-                  </p>
-                </div>
-                <div
-                  className="border-[#dce4ee] border-b border-solid content-stretch flex gap-[12px] items-start overflow-clip py-[12px] relative shrink-0 w-full"
-                  data-node-id="1:212"
-                  data-name="Activity"
-                >
-                  <div
-                    className="bg-[#eaf2ff] content-stretch flex items-center justify-center overflow-clip relative rounded-[999px] shrink-0 size-[34px]"
-                    data-node-id="1:213"
-                    data-name="Activity icon"
-                  >
-                    <div
-                      className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[16px] text-[#1769e0] text-[12.8px] text-center"
-                      data-node-id="1:214"
-                    >
-                      <p className="leading-[normal]">✓</p>
-                    </div>
-                  </div>
-                  <div
-                    className="[word-break:break-word] content-stretch flex flex-[1_0_0] flex-col gap-[4px] items-start leading-[normal] min-w-px not-italic overflow-clip relative"
-                    data-node-id="1:215"
-                    data-name="Activity copy"
-                  >
-                    <p
-                      className="font-['Inter:Bold'] font-bold relative shrink-0 text-[#172b4d] text-[12px] w-full"
-                      data-node-id="1:216"
-                    >
-                      Stok opname diselesaikan
-                    </p>
-                    <p
-                      className="font-['Inter:Regular'] font-normal relative shrink-0 text-[#64748b] text-[11px] w-full"
-                      data-node-id="1:217"
-                    >
-                      Periode Oktober 2026 · selisih 2 item
-                    </p>
-                  </div>
-                  <p
-                    className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#94a3b8] text-[10px] text-right w-[90px]"
-                    data-node-id="1:218"
-                  >
-                    2 jam lalu
-                  </p>
-                </div>
+              <div className="flex w-full shrink-0 flex-col items-start overflow-clip">
+                {aktivitas.slice(0, 3).map((a) => (
+                  <AktivitasItem key={a.judul} a={a} />
+                ))}
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Modal: semua barang di bawah stok minimum */}
+      {modal === "stok" && (
+        <Modal title="Barang di bawah stok minimum" onClose={tutup}>
+          <div className="flex flex-col gap-[10px]">
+            {stokRendah.map((item) => (
+              <div
+                key={item.kode}
+                className="rounded-[8px] border border-solid border-[#f3c6c2] bg-[#fef0ef] p-[14px]"
+              >
+                <p className="text-[13px] font-bold text-[#172b4d]">
+                  {item.nama}
+                </p>
+                <p className="text-[11px] text-[#64748b]">{item.kode}</p>
+                <p className="mt-1 text-[15px] text-[#c2413a]">
+                  {item.stok}{" "}
+                  <span className="text-[11px] text-[#64748b]">
+                    · {item.min}
+                  </span>
+                </p>
+              </div>
+            ))}
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal: semua aktivitas */}
+      {modal === "aktivitas" && (
+        <Modal title="Semua aktivitas" onClose={tutup}>
+          <div className="flex flex-col">
+            {aktivitas.map((a) => (
+              <AktivitasItem key={a.judul} a={a} />
+            ))}
+          </div>
+        </Modal>
+      )}
     </div>
-  )
+  );
 }

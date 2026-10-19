@@ -1,4 +1,6 @@
-@import 'tailwindcss';
+@import "tailwindcss";
+@import "tailwindcss";
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap");
 
 @font-face {
   font-family: "Inter:Bold";
@@ -30,14 +32,16 @@
 
 @font-face {
   font-family: "Noto Sans Math:Regular";
-  src: url("https://static.figma.com/font/NotoSansMath-Regular_1") format("woff2");
+  src: url("https://static.figma.com/font/NotoSansMath-Regular_1")
+    format("woff2");
   font-style: normal;
   font-weight: 400;
 }
 
 @font-face {
   font-family: "Noto Sans Symbols2:Regular";
-  src: url("https://static.figma.com/font/NotoSansSymbols2-Regular_5") format("woff2");
+  src: url("https://static.figma.com/font/NotoSansSymbols2-Regular_5")
+    format("woff2");
   font-style: normal;
   font-weight: 400;
 }
@@ -59,7 +63,7 @@
 :root {
   color: #172b4d;
   background: #f3f6fa;
-  font-family: "Inter:Regular", Inter, sans-serif;
+  font-family: "Plus Jakarta Sans", sans-serif;
   font-synthesis: none;
 }
 
@@ -100,7 +104,9 @@ body {
 
 .app-screen [data-name="Navigation"] p,
 .app-screen [data-name="Button"] {
-  transition: filter 150ms ease, opacity 150ms ease;
+  transition:
+    filter 150ms ease,
+    opacity 150ms ease;
 }
 
 .app-screen [data-name="Navigation"] p:hover,

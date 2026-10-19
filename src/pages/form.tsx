@@ -1,870 +1,789 @@
-export default function FormTambahEditBarangScreen() {
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  ChevronDown,
+  ChevronLeft,
+  PackageSearch,
+  Lightbulb,
+  Save,
+  type LucideIcon,
+} from "lucide-react";
+import Sidebar from "../Components/Sidebar";
+import { useAuth } from "../auth";
+
+/* ------------------------------ Data ------------------------------ */
+
+interface BarangTersimpan {
+  kode: string;
+  nama: string;
+  kategori: string;
+  lokasi: string; // "Gudang Utama · Rak B-04"
+  stok: string; // "12 unit"
+  minimum: string; // "5"
+  menipis: boolean;
+  merek: string;
+  model: string;
+  deskripsi: string;
+  aktif: boolean;
+}
+
+/* Samakan dengan data di Master Barang */
+const dataDasar: BarangTersimpan[] = [
+  { kode: "MAT-LAN-006", nama: "Kabel LAN Cat6 UTP 305m", kategori: "Kabel & aksesori", lokasi: "Gudang Utama · Rak A-01", stok: "18 roll", minimum: "8", menipis: false },
+  { kode: "MAT-RJ45-006", nama: "Konektor RJ45 Cat6", kategori: "Material jaringan", lokasi: "Gudang Utama · Bin A-12", stok: "28 pcs", minimum: "50", menipis: true },
+  { kode: "NET-RTR-012", nama: "Router MikroTik RB4011", kategori: "Perangkat jaringan", lokasi: "Gudang Utama · Rak B-01", stok: "12 unit", minimum: "5", menipis: false },
+  { kode: "NET-SWI-024", nama: "Switch Managed 24 Port PoE", kategori: "Perangkat jaringan", lokasi: "Gudang Utama · Rak B-02", stok: "8 unit", minimum: "5", menipis: false },
+  { kode: "NET-AP-018", nama: "Access Point Wi-Fi 6", kategori: "Perangkat jaringan", lokasi: "Gudang Utama · Rak B-04", stok: "14 unit", minimum: "6", menipis: false },
+  { kode: "NET-SFP-001", nama: "SFP Module 1G Single Mode", kategori: "Perangkat jaringan", lokasi: "Gudang Utama · Rak B-03", stok: "4 unit", minimum: "10", menipis: true },
+  { kode: "MAT-PC-001", nama: "Patch Cord Cat6 1m", kategori: "Kabel & aksesori", lokasi: "Gudang Utama · Rak A-05", stok: "12 pcs", minimum: "20", menipis: true },
+  { kode: "NET-FW-003", nama: "Firewall FortiGate 60F", kategori: "Perangkat jaringan", lokasi: "Gudang Cadangan · Rak C-02", stok: "3 unit", minimum: "4", menipis: true },
+  { kode: "PND-UPS-005", nama: "UPS 1200VA", kategori: "Perangkat pendukung", lokasi: "Gudang Aptika · Rak D-01", stok: "6 unit", minimum: "3", menipis: false },
+].map((b) => ({ ...b, merek: "", model: "", deskripsi: "", aktif: true }));
+
+const opsiKategori = [
+  "Perangkat jaringan",
+  "Kabel & aksesori",
+  "Material jaringan",
+  "Perangkat pendukung",
+];
+const opsiSatuan = ["Unit", "Pcs", "Roll", "Box", "Set", "Meter"];
+const opsiGudang = ["Gudang Utama", "Gudang Cadangan", "Gudang Aptika"];
+
+const prefixKategori: Record<string, string> = {
+  "Perangkat jaringan": "NET",
+  "Kabel & aksesori": "MAT",
+  "Material jaringan": "MAT",
+  "Perangkat pendukung": "PND",
+};
+
+const tips = [
+  "Gunakan nama barang yang mudah dikenali.",
+  "Pastikan kategori dan satuan sudah tepat.",
+  "Stok minimum membantu mencegah kekosongan.",
+];
+
+const KEY_TERPILIH = "simpera-barang-terpilih";
+const KEY_TERSIMPAN = "simpera-barang-tersimpan";
+const KEY_DIHAPUS = "simpera-barang-dihapus";
+
+function bacaJson<T>(key: string, awal: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : awal;
+  } catch {
+    return awal;
+  }
+}
+
+function bacaTersimpan(): BarangTersimpan[] {
+  return bacaJson<BarangTersimpan[]>(KEY_TERSIMPAN, []);
+}
+
+/* gabungan data dasar + data tersimpan, tanpa yang sudah dihapus */
+function semuaBarang(): BarangTersimpan[] {
+  const tersimpan = bacaTersimpan();
+  const dihapus = new Set(bacaJson<string[]>(KEY_DIHAPUS, []));
+  const kodeTersimpan = new Set(tersimpan.map((b) => b.kode));
+  return [
+    ...dataDasar.filter((b) => !kodeTersimpan.has(b.kode)),
+    ...tersimpan,
+  ].filter((b) => !dihapus.has(b.kode));
+}
+
+function bacaKodeTerpilih(): string | null {
+  try {
+    return sessionStorage.getItem(KEY_TERPILIH);
+  } catch {
+    return null;
+  }
+}
+
+function buatKode(kategori: string, daftar: BarangTersimpan[]) {
+  const prefix = prefixKategori[kategori] ?? "BRG";
+  const urutan = daftar.map((b) => parseInt(b.kode.split("-").pop() ?? "0", 10) || 0);
+  const berikut = Math.max(0, ...urutan) + 1;
+  return `${prefix}-${String(berikut).padStart(3, "0")}`;
+}
+
+function kembali() {
+  window.history.back();
+}
+
+/* --------------------------- Komponen kecil --------------------------- */
+
+function Field({
+  label,
+  hint,
+  error,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  error?: string;
+  children: ReactNode;
+}) {
   return (
-    <div
-      className="bg-[#f3f6fa] content-stretch flex items-start relative size-full"
-      data-node-id="1:555"
-      data-name="Form Tambah / Edit Barang screen"
-    >
-      <div
-        className="bg-[#102a43] content-stretch flex flex-col gap-[22px] items-start min-h-[1024px] overflow-clip pb-[20px] pt-[24px] px-[22px] relative self-stretch shrink-0 w-[244px]"
-        data-node-id="1:556"
-        data-name="Sidebar"
+    <div className="flex min-w-px flex-[1_0_0] flex-col items-start gap-[7px]">
+      <p className="shrink-0 whitespace-nowrap text-[12px] font-normal not-italic leading-[normal] text-[#172b4d]">
+        {label}
+      </p>
+      {children}
+      {error ? (
+        <p className="w-full shrink-0 text-[11px] font-normal not-italic leading-[normal] text-[#c2413a]">
+          {error}
+        </p>
+      ) : (
+        hint && (
+          <p className="w-full shrink-0 text-[11px] font-normal not-italic leading-[normal] text-[#64748b]">
+            {hint}
+          </p>
+        )
+      )}
+    </div>
+  );
+}
+
+function TextInput({
+  value,
+  onChange,
+  placeholder,
+  error,
+  readOnly = false,
+  type = "text",
+}: {
+  value: string;
+  onChange?: (v: string) => void;
+  placeholder?: string;
+  error?: string;
+  readOnly?: boolean;
+  type?: "text" | "number";
+}) {
+  return (
+    <input
+      type={type}
+      min={type === "number" ? 0 : undefined}
+      value={value}
+      readOnly={readOnly}
+      placeholder={placeholder}
+      onChange={(e) => onChange?.(e.target.value)}
+      aria-invalid={!!error}
+      className={`h-[42px] w-full shrink-0 rounded-[8px] border border-solid px-[12px] text-[14px] font-normal not-italic leading-[normal] outline-none placeholder:text-[#94a3b8] ${
+        readOnly
+          ? "border-[#dce4ee] bg-[#f8fafc] text-[#64748b]"
+          : error
+            ? "border-[#c2413a] bg-white text-[#172b4d]"
+            : "border-[#dce4ee] bg-white text-[#172b4d] focus:border-[#1769e0]"
+      }`}
+    />
+  );
+}
+
+function SelectInput({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+}) {
+  return (
+    <div className="relative w-full shrink-0">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-[42px] w-full cursor-pointer appearance-none rounded-[8px] border border-solid border-[#dce4ee] bg-white px-[12px] pr-[34px] text-[14px] font-normal not-italic text-[#172b4d] outline-none focus:border-[#1769e0]"
       >
-        <p
-          className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[15px] text-white w-full"
-          data-node-id="1:557"
-        >
-          SIMPERA-NET
-        </p>
-        <p
-          className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#d5e2ef] text-[12px] w-full"
-          data-node-id="1:558"
-        >
-          Bidang Teknologi dan Informasi
-        </p>
-        <div
-          className="bg-[#29455f] h-px relative shrink-0 w-full"
-          data-node-id="1:559"
-          data-name="Divider"
-        />
-        <div
-          className="[word-break:break-word] content-stretch flex flex-col gap-[18px] items-start leading-[normal] not-italic overflow-clip relative shrink-0 text-[12px] w-full"
-          data-node-id="1:560"
-          data-name="Navigation"
-        >
-          <p
-            className="font-['Inter:Medium'] font-medium relative shrink-0 text-[#d7e2ec] w-full"
-            data-node-id="1:561"
-          >
-            Dashboard
-          </p>
-          <p
-            className="font-['Inter:Regular'] font-normal relative shrink-0 text-[#65a1ff] w-full whitespace-pre-wrap"
-            data-node-id="1:562"
-          >{`●  Master Barang`}</p>
-          <p
-            className="font-['Inter:Medium'] font-medium relative shrink-0 text-[#d7e2ec] w-full"
-            data-node-id="1:563"
-          >
-            Barang Masuk
-          </p>
-          <p
-            className="font-['Inter:Medium'] font-medium relative shrink-0 text-[#d7e2ec] w-full"
-            data-node-id="1:564"
-          >
-            Barang Keluar
-          </p>
-          <p
-            className="font-['Inter:Medium'] font-medium relative shrink-0 text-[#d7e2ec] w-full"
-            data-node-id="1:565"
-          >
-            Stok Opname
-          </p>
-          <p
-            className="font-['Inter:Medium'] font-medium relative shrink-0 text-[#d7e2ec] w-full"
-            data-node-id="1:566"
-          >
-            Laporan
-          </p>
-          <p
-            className="font-['Inter:Medium'] font-medium relative shrink-0 text-[#d7e2ec] w-full"
-            data-node-id="1:567"
-          >
-            Manajemen Pengguna
-          </p>
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+      <ChevronDown
+        size={16}
+        className="pointer-events-none absolute right-[12px] top-1/2 -translate-y-1/2 text-[#64748b]"
+      />
+    </div>
+  );
+}
+
+function SectionHeading({
+  title,
+  desc,
+  icon: Icon,
+}: {
+  title: string;
+  desc: string;
+  icon: LucideIcon;
+}) {
+  return (
+    <div className="flex w-full shrink-0 items-center gap-[11px] overflow-clip">
+      <div className="flex size-[36px] shrink-0 items-center justify-center overflow-clip rounded-[8px] bg-[#eaf2ff]">
+        <div className="flex size-[17px] shrink-0 items-center justify-center text-[#1769e0]">
+          <Icon size={17} />
         </div>
       </div>
-      <div
-        className="content-stretch flex flex-[1_0_0] flex-col items-start min-h-[1040px] min-w-px overflow-clip relative"
-        data-node-id="1:568"
-        data-name="Workspace"
-      >
+      <div className="flex min-w-px flex-[1_0_0] flex-col items-start gap-[3px] overflow-clip font-normal not-italic leading-[normal]">
+        <p className="shrink-0 whitespace-nowrap text-[15px] text-[#172b4d]">
+          {title}
+        </p>
+        <p className="w-full shrink-0 text-[11px] text-[#64748b]">{desc}</p>
+      </div>
+    </div>
+  );
+}
+
+function Card({ children }: { children: ReactNode }) {
+  return (
+    <div className="relative flex w-full shrink-0 flex-col items-start gap-[20px] rounded-[12px] border border-solid border-[#dce4ee] bg-white p-[22px] drop-shadow-[0px_8px_12px_rgba(18,49,79,0.07)]">
+      {children}
+    </div>
+  );
+}
+
+function Row({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex w-full shrink-0 items-start gap-[14px]">{children}</div>
+  );
+}
+
+function StatusOption({
+  aktif,
+  dipilih,
+  judul,
+  desc,
+  onClick,
+}: {
+  aktif: boolean;
+  dipilih: boolean;
+  judul: string;
+  desc: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={dipilih}
+      onClick={onClick}
+      className={`flex w-full shrink-0 cursor-pointer items-center gap-[10px] overflow-clip rounded-[8px] border border-solid p-[12px] text-left ${
+        dipilih
+          ? aktif
+            ? "border-[#b9e5c8] bg-[#eaf8ef]"
+            : "border-[#cbd5e1] bg-[#f1f5f9]"
+          : "border-[#dce4ee] bg-white hover:bg-[#f8fafc]"
+      }`}
+    >
+      {dipilih ? (
         <div
-          className="[word-break:break-word] bg-white border-[#dce4ee] border-b border-solid content-stretch flex h-[76px] items-center justify-between leading-[normal] not-italic overflow-clip px-[32px] relative shrink-0 w-full whitespace-nowrap"
-          data-node-id="1:569"
-          data-name="Top bar"
+          className={`flex size-[18px] shrink-0 items-center justify-center overflow-clip rounded-[999px] ${
+            aktif ? "bg-[#15803d]" : "bg-[#64748b]"
+          }`}
         >
-          <p
-            className="font-['Inter:Bold'] font-bold relative shrink-0 text-[#172b4d] text-[16px]"
-            data-node-id="1:570"
-          >
+          <div className="size-[6px] shrink-0 rounded-[999px] bg-white" />
+        </div>
+      ) : (
+        <div className="size-[18px] shrink-0 rounded-[999px] border border-solid border-[#dce4ee]" />
+      )}
+      <div className="flex min-w-px flex-[1_0_0] flex-col items-start gap-[2px] overflow-clip not-italic leading-[normal]">
+        <p
+          className={`shrink-0 whitespace-nowrap text-[12px] ${
+            dipilih
+              ? aktif
+                ? "font-bold text-[#15803d]"
+                : "font-bold text-[#172b4d]"
+              : "font-normal text-[#172b4d]"
+          }`}
+        >
+          {judul}
+        </p>
+        <p className="w-full shrink-0 text-[10px] font-normal text-[#64748b]">
+          {desc}
+        </p>
+      </div>
+    </button>
+  );
+}
+
+/* ------------------------------ Halaman ------------------------------ */
+
+type Errors = Partial<
+  Record<"kode" | "nama" | "stok" | "minimum" | "rak", string>
+>;
+
+export default function FormTambahEditBarangScreen() {
+  const { user } = useAuth();
+
+  /* mode edit kalau ada kode terpilih yang ditemukan */
+  const barangEdit = useMemo(() => {
+    const kode = bacaKodeTerpilih();
+    return kode ? (semuaBarang().find((b) => b.kode === kode) ?? null) : null;
+  }, []);
+  const modeEdit = barangEdit !== null;
+
+  const awalStok = barangEdit?.stok.split(" ") ?? [];
+  const awalLokasi = barangEdit?.lokasi.split(" · ") ?? [];
+
+  const [kategori, setKategori] = useState(
+    barangEdit?.kategori ?? opsiKategori[0],
+  );
+  const [kode, setKode] = useState(
+    barangEdit?.kode ?? buatKode(opsiKategori[0], semuaBarang()),
+  );
+  const [kodeManual, setKodeManual] = useState(modeEdit);
+  const [nama, setNama] = useState(barangEdit?.nama ?? "");
+  const [satuan, setSatuan] = useState(
+    awalStok[1]
+      ? awalStok[1].charAt(0).toUpperCase() + awalStok[1].slice(1)
+      : "Unit",
+  );
+  const [merek, setMerek] = useState(barangEdit?.merek ?? "");
+  const [model, setModel] = useState(barangEdit?.model ?? "");
+  const [deskripsi, setDeskripsi] = useState(barangEdit?.deskripsi ?? "");
+  const [stok, setStok] = useState(awalStok[0] ?? "0");
+  const [minimum, setMinimum] = useState(barangEdit?.minimum ?? "5");
+  const [gudang, setGudang] = useState(awalLokasi[0] ?? opsiGudang[0]);
+  const [rak, setRak] = useState(awalLokasi[1] ?? "");
+  const [aktif, setAktif] = useState(barangEdit?.aktif ?? true);
+
+  const [errors, setErrors] = useState<Errors>({});
+  const [dirty, setDirty] = useState(false);
+  const [toast, setToast] = useState("");
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(""), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  /* setiap perubahan menandai "dirty" dan menghapus error field itu */
+  const ubah =
+    (setter: (v: string) => void, field?: keyof Errors) => (v: string) => {
+      setter(v);
+      setDirty(true);
+      if (field) setErrors((e) => ({ ...e, [field]: undefined }));
+    };
+
+  const ubahKategori = (v: string) => {
+    setKategori(v);
+    setDirty(true);
+    if (!kodeManual && !modeEdit) setKode(buatKode(v, semuaBarang()));
+  };
+
+  const ubahKode = (v: string) => {
+    setKode(v.toUpperCase());
+    setKodeManual(true);
+    setDirty(true);
+    setErrors((e) => ({ ...e, kode: undefined }));
+  };
+
+  /* progress langkah */
+  const langkah1Lengkap = kode.trim() !== "" && nama.trim() !== "";
+  const langkah2Lengkap =
+    langkah1Lengkap && stok !== "" && minimum !== "" && rak.trim() !== "";
+  const langkah = [
+    { no: 1, label: "Informasi barang", aktif: true, garis: langkah1Lengkap },
+    { no: 2, label: "Stok & lokasi", aktif: langkah1Lengkap, garis: langkah2Lengkap },
+    { no: 3, label: "Konfirmasi", aktif: langkah2Lengkap, garis: undefined },
+  ];
+
+  const simpan = () => {
+    const e: Errors = {};
+    const kodeBersih = kode.trim();
+    const stokNum = Number(stok);
+    const minNum = Number(minimum);
+
+    if (!kodeBersih) e.kode = "Kode barang wajib diisi.";
+    else if (
+      semuaBarang().some(
+        (b) =>
+          b.kode.toLowerCase() === kodeBersih.toLowerCase() &&
+          b.kode !== barangEdit?.kode,
+      )
+    )
+      e.kode = "Kode barang sudah dipakai.";
+
+    if (!nama.trim()) e.nama = "Nama barang wajib diisi.";
+
+    if (stok === "" || !Number.isInteger(stokNum) || stokNum < 0)
+      e.stok = "Isi dengan angka bulat, minimal 0.";
+    if (minimum === "" || !Number.isInteger(minNum) || minNum < 0)
+      e.minimum = "Isi dengan angka bulat, minimal 0.";
+    if (!rak.trim()) e.rak = "Rak / bin wajib diisi.";
+
+    setErrors(e);
+    if (Object.keys(e).length > 0) {
+      setToast("Masih ada isian yang belum benar. Periksa kolom berwarna merah.");
+      return;
+    }
+
+    const stokTeks = modeEdit
+      ? (barangEdit as BarangTersimpan).stok
+      : `${stokNum} ${satuan.toLowerCase()}`;
+    const stokAngka = modeEdit ? parseInt(stokTeks, 10) : stokNum;
+
+    const item: BarangTersimpan = {
+      kode: kodeBersih,
+      nama: nama.trim(),
+      kategori,
+      lokasi: `${gudang} · ${rak.trim()}`,
+      stok: stokTeks,
+      minimum: String(minNum),
+      menipis: stokAngka <= minNum,
+      merek: merek.trim(),
+      model: model.trim(),
+      deskripsi: deskripsi.trim(),
+      aktif,
+    };
+
+    try {
+      const kodeLama = barangEdit?.kode;
+
+      /* buang versi lama (kode lama / kode yang sama) dari data tersimpan */
+      const lama = bacaTersimpan().filter(
+        (b) => b.kode !== (kodeLama ?? kodeBersih) && b.kode !== kodeBersih,
+      );
+      localStorage.setItem(KEY_TERSIMPAN, JSON.stringify([...lama, item]));
+
+      /* kode baru boleh dipakai lagi; kode lama (kalau diganti) disembunyikan */
+      const dihapus = new Set(bacaJson<string[]>(KEY_DIHAPUS, []));
+      dihapus.delete(kodeBersih);
+      if (kodeLama && kodeLama !== kodeBersih) dihapus.add(kodeLama);
+      localStorage.setItem(KEY_DIHAPUS, JSON.stringify([...dihapus]));
+
+      /* simpan kode terbaru supaya halaman detail tetap menemukan barangnya */
+      sessionStorage.setItem(KEY_TERPILIH, kodeBersih);
+    } catch {
+      setToast("Data gagal disimpan.");
+      return;
+    }
+
+    setDirty(false);
+    setToast(
+      modeEdit ? "Perubahan barang berhasil disimpan." : "Barang baru berhasil disimpan.",
+    );
+    setTimeout(kembali, 900);
+  };
+
+  /* jangan hapus kode terpilih, halaman detail masih membutuhkannya */
+  const batal = () => {
+    kembali();
+  };
+
+  return (
+    <div className="relative flex size-full items-start bg-[#f3f6fa]">
+      <Sidebar active="Master Barang" />
+
+      <div className="relative flex min-h-[1040px] min-w-px flex-[1_0_0] flex-col items-start overflow-clip">
+        {/* Top bar */}
+        <div className="flex h-[76px] w-full shrink-0 items-center justify-between overflow-clip whitespace-nowrap border-b border-solid border-[#dce4ee] bg-white px-[32px] not-italic leading-[normal]">
+          <p className="shrink-0 text-[16px] font-bold text-[#172b4d]">
             Sistem Persediaan Infrastruktur TIK
           </p>
-          <p
-            className="font-['Inter:Regular'] font-normal relative shrink-0 text-[#64748b] text-[12px]"
-            data-node-id="1:571"
-          >
-            Ayu Pramesti · Admin
+          <p className="shrink-0 text-[12px] font-normal text-[#64748b]">
+            {user?.nama} · {user?.role}
           </p>
         </div>
-        <div
-          className="content-stretch flex flex-col gap-[24px] items-start overflow-clip p-[32px] relative shrink-0 w-full"
-          data-node-id="1:572"
-          data-name="Page content"
-        >
-          <div
-            className="[word-break:break-word] content-stretch flex font-['Inter:Regular'] font-normal items-center justify-between not-italic overflow-clip relative shrink-0 w-full"
-            data-node-id="1:573"
-            data-name="Page heading"
-          >
-            <div
-              className="content-stretch flex flex-[1_0_0] flex-col gap-[5px] items-start leading-[normal] min-w-px overflow-clip relative"
-              data-node-id="1:574"
-              data-name="Heading copy"
-            >
-              <p
-                className="relative shrink-0 text-[#172b4d] text-[26px] w-full"
-                data-node-id="1:575"
-              >
-                Form Tambah / Edit Barang
+
+        {/* Page content */}
+        <div className="flex w-full shrink-0 flex-col items-start gap-[24px] overflow-clip p-[32px]">
+          {/* Page heading */}
+          <div className="flex w-full shrink-0 items-center justify-between overflow-clip font-normal not-italic">
+            <div className="flex min-w-px flex-[1_0_0] flex-col items-start gap-[5px] overflow-clip leading-[normal]">
+              <p className="w-full shrink-0 text-[26px] text-[#172b4d]">
+                {modeEdit ? "Edit Barang" : "Tambah Barang"}
               </p>
-              <p
-                className="relative shrink-0 text-[#64748b] text-[14px] w-full"
-                data-node-id="1:576"
-              >
+              <p className="w-full shrink-0 text-[14px] text-[#64748b]">
                 Lengkapi atau perbarui data master barang. Kolom bertanda *
                 wajib diisi.
               </p>
             </div>
-            <div
-              className="bg-white border border-solid border-white content-stretch flex gap-[8px] h-[40px] items-center justify-center overflow-clip px-[15px] relative rounded-[8px] shrink-0 text-[#64748b]"
-              data-node-id="1:577"
-              data-name="Button"
+            <button
+              type="button"
+              onClick={batal}
+              className="flex h-[40px] shrink-0 cursor-pointer items-center justify-center gap-[8px] overflow-clip rounded-[8px] border border-solid border-white bg-white px-[15px] text-[#64748b] hover:bg-[#f8fafc]"
             >
-              <div
-                className="flex flex-col justify-center leading-[0] relative shrink-0 size-[16px] text-[12.8px] text-center"
-                data-node-id="1:578"
-              >
-                <p className="leading-[normal]">›</p>
-              </div>
-              <p
-                className="leading-[normal] relative shrink-0 text-[14px] whitespace-nowrap"
-                data-node-id="1:579"
-              >
+              <ChevronLeft size={16} className="shrink-0" />
+              <span className="shrink-0 whitespace-nowrap text-[14px] leading-[normal]">
                 Kembali
-              </p>
-            </div>
+              </span>
+            </button>
           </div>
-          <div
-            className="bg-white border border-[#dce4ee] border-solid content-stretch flex items-center justify-between overflow-clip p-[14px] relative rounded-[8px] shrink-0 w-full"
-            data-node-id="1:580"
-            data-name="Form progress"
-          >
-            <div
-              className="content-stretch flex gap-[9px] items-center overflow-clip relative shrink-0"
-              data-node-id="1:581"
-              data-name="Progress step"
-            >
+
+          {/* Form progress */}
+          <div className="flex w-full shrink-0 items-center justify-between overflow-clip rounded-[8px] border border-solid border-[#dce4ee] bg-white p-[14px]">
+            {langkah.map((l) => (
               <div
-                className="bg-[#1769e0] border border-[#1769e0] border-solid content-stretch flex items-center justify-center overflow-clip relative rounded-[999px] shrink-0 size-[28px]"
-                data-node-id="1:582"
-                data-name="Step number"
-              >
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[11px] text-white whitespace-nowrap"
-                  data-node-id="1:583"
-                >
-                  1
-                </p>
-              </div>
-              <p
-                className="[word-break:break-word] font-['Inter:Bold'] font-bold leading-[normal] not-italic relative shrink-0 text-[#172b4d] text-[12px] whitespace-nowrap"
-                data-node-id="1:584"
-              >
-                Informasi barang
-              </p>
-              <div
-                className="bg-[#1769e0] h-[2px] relative shrink-0 w-[220px]"
-                data-node-id="1:585"
-                data-name="Progress connector"
-              />
-            </div>
-            <div
-              className="content-stretch flex gap-[9px] items-center overflow-clip relative shrink-0"
-              data-node-id="1:586"
-              data-name="Progress step"
-            >
-              <div
-                className="bg-[#1769e0] border border-[#1769e0] border-solid content-stretch flex items-center justify-center overflow-clip relative rounded-[999px] shrink-0 size-[28px]"
-                data-node-id="1:587"
-                data-name="Step number"
-              >
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[11px] text-white whitespace-nowrap"
-                  data-node-id="1:588"
-                >
-                  2
-                </p>
-              </div>
-              <p
-                className="[word-break:break-word] font-['Inter:Bold'] font-bold leading-[normal] not-italic relative shrink-0 text-[#172b4d] text-[12px] whitespace-nowrap"
-                data-node-id="1:589"
-              >{`Stok & lokasi`}</p>
-              <div
-                className="bg-[#dce4ee] h-[2px] relative shrink-0 w-[220px]"
-                data-node-id="1:590"
-                data-name="Progress connector"
-              />
-            </div>
-            <div
-              className="content-stretch flex gap-[9px] items-center overflow-clip relative shrink-0"
-              data-node-id="1:591"
-              data-name="Progress step"
-            >
-              <div
-                className="bg-[#f8fafc] border border-[#dce4ee] border-solid content-stretch flex items-center justify-center overflow-clip relative rounded-[999px] shrink-0 size-[28px]"
-                data-node-id="1:592"
-                data-name="Step number"
-              >
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#64748b] text-[11px] whitespace-nowrap"
-                  data-node-id="1:593"
-                >
-                  3
-                </p>
-              </div>
-              <p
-                className="[word-break:break-word] font-['Inter:Medium'] font-medium leading-[normal] not-italic relative shrink-0 text-[#64748b] text-[12px] whitespace-nowrap"
-                data-node-id="1:594"
-              >
-                Konfirmasi
-              </p>
-            </div>
-          </div>
-          <div
-            className="content-stretch flex gap-[16px] items-start relative shrink-0 w-full"
-            data-node-id="1:595"
-            data-name="Form columns"
-          >
-            <div
-              className="content-stretch flex flex-[1_0_0] flex-col gap-[16px] items-start min-w-px relative"
-              data-node-id="1:596"
-              data-name="Primary form"
-            >
-              <div
-                className="bg-white border border-[#dce4ee] border-solid content-stretch drop-shadow-[0px_8px_12px_rgba(18,49,79,0.07)] flex flex-col gap-[20px] items-start p-[22px] relative rounded-[12px] shrink-0 w-full"
-                data-node-id="1:597"
-                data-name="Basic information"
+                key={l.no}
+                className="flex shrink-0 items-center gap-[9px] overflow-clip"
               >
                 <div
-                  className="content-stretch flex gap-[11px] items-center overflow-clip relative shrink-0 w-full"
-                  data-node-id="1:598"
-                  data-name="Section heading"
-                >
-                  <div
-                    className="bg-[#eaf2ff] content-stretch flex items-center justify-center overflow-clip relative rounded-[8px] shrink-0 size-[36px]"
-                    data-node-id="1:599"
-                    data-name="Section icon"
-                  >
-                    <div
-                      className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[17px] text-[#1769e0] text-[13.6px] text-center"
-                      data-node-id="1:600"
-                    >
-                      <p className="leading-[normal]">◆</p>
-                    </div>
-                  </div>
-                  <div
-                    className="[word-break:break-word] content-stretch flex flex-[1_0_0] flex-col font-['Inter:Regular'] font-normal gap-[3px] items-start leading-[normal] min-w-px not-italic overflow-clip relative"
-                    data-node-id="1:601"
-                    data-name="Heading copy"
-                  >
-                    <p
-                      className="relative shrink-0 text-[#172b4d] text-[15px] whitespace-nowrap"
-                      data-node-id="1:602"
-                    >
-                      Informasi barang
-                    </p>
-                    <p
-                      className="min-w-full relative shrink-0 text-[#64748b] text-[11px] w-[min-content]"
-                      data-node-id="1:603"
-                    >
-                      Identitas utama yang digunakan pada pencarian dan laporan.
-                    </p>
-                  </div>
-                </div>
-                <div
-                  className="content-stretch flex gap-[14px] items-start overflow-clip relative shrink-0 w-full"
-                  data-node-id="1:604"
-                  data-name="Field row"
-                >
-                  <div
-                    className="content-stretch flex flex-[1_0_0] flex-col gap-[7px] items-start min-w-px overflow-clip relative"
-                    data-node-id="1:605"
-                    data-name="Field"
-                  >
-                    <p
-                      className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#172b4d] text-[12px] whitespace-nowrap"
-                      data-node-id="1:606"
-                    >
-                      Kode barang *
-                    </p>
-                    <div
-                      className="bg-white border border-[#dce4ee] border-solid content-stretch flex h-[42px] items-center overflow-clip px-[12px] relative rounded-[8px] shrink-0 w-full"
-                      data-node-id="1:607"
-                      data-name="Input"
-                    >
-                      <p
-                        className="[word-break:break-word] flex-[1_0_0] font-['Inter:Regular'] font-normal leading-[normal] min-w-px not-italic relative text-[#172b4d] text-[14px]"
-                        data-node-id="1:608"
-                      >
-                        NET-AP-019
-                      </p>
-                    </div>
-                    <p
-                      className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] min-w-full not-italic relative shrink-0 text-[#64748b] text-[11px] w-[min-content]"
-                      data-node-id="1:609"
-                    >
-                      Dibuat otomatis, dapat disesuaikan.
-                    </p>
-                  </div>
-                  <div
-                    className="content-stretch flex flex-[1_0_0] flex-col gap-[7px] items-start min-w-px overflow-clip relative"
-                    data-node-id="1:610"
-                    data-name="Field"
-                  >
-                    <p
-                      className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#172b4d] text-[12px] whitespace-nowrap"
-                      data-node-id="1:611"
-                    >
-                      Nama barang *
-                    </p>
-                    <div
-                      className="bg-white border border-[#dce4ee] border-solid content-stretch flex h-[42px] items-center overflow-clip px-[12px] relative rounded-[8px] shrink-0 w-full"
-                      data-node-id="1:612"
-                      data-name="Input"
-                    >
-                      <p
-                        className="[word-break:break-word] flex-[1_0_0] font-['Inter:Regular'] font-normal leading-[normal] min-w-px not-italic relative text-[#94a3b8] text-[14px]"
-                        data-node-id="1:613"
-                      >
-                        Contoh: Access Point Wi-Fi 6
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                <div
-                  className="[word-break:break-word] content-stretch flex font-['Inter:Regular'] font-normal gap-[14px] items-start not-italic overflow-clip relative shrink-0 w-full"
-                  data-node-id="1:614"
-                  data-name="Field row"
-                >
-                  <div
-                    className="content-stretch flex flex-[1_0_0] flex-col gap-[7px] items-start min-w-px overflow-clip relative"
-                    data-node-id="1:615"
-                    data-name="Field"
-                  >
-                    <p
-                      className="leading-[normal] relative shrink-0 text-[#172b4d] text-[12px] whitespace-nowrap"
-                      data-node-id="1:616"
-                    >
-                      Kategori
-                    </p>
-                    <div
-                      className="bg-white border border-[#dce4ee] border-solid content-stretch flex h-[42px] items-center justify-between overflow-clip px-[12px] relative rounded-[8px] shrink-0 w-full"
-                      data-node-id="1:617"
-                      data-name="Selection"
-                    >
-                      <p
-                        className="leading-[normal] relative shrink-0 text-[#172b4d] text-[14px] whitespace-nowrap"
-                        data-node-id="1:618"
-                      >
-                        Perangkat jaringan
-                      </p>
-                      <div
-                        className="flex flex-col justify-center leading-[0] relative shrink-0 size-[16px] text-[#64748b] text-[12.8px] text-center"
-                        data-node-id="1:619"
-                      >
-                        <p className="leading-[normal]">›</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div
-                    className="content-stretch flex flex-[1_0_0] flex-col gap-[7px] items-start min-w-px overflow-clip relative"
-                    data-node-id="1:620"
-                    data-name="Field"
-                  >
-                    <p
-                      className="leading-[normal] relative shrink-0 text-[#172b4d] text-[12px] whitespace-nowrap"
-                      data-node-id="1:621"
-                    >
-                      Satuan
-                    </p>
-                    <div
-                      className="bg-white border border-[#dce4ee] border-solid content-stretch flex h-[42px] items-center justify-between overflow-clip px-[12px] relative rounded-[8px] shrink-0 w-full"
-                      data-node-id="1:622"
-                      data-name="Selection"
-                    >
-                      <p
-                        className="leading-[normal] relative shrink-0 text-[#172b4d] text-[14px] whitespace-nowrap"
-                        data-node-id="1:623"
-                      >
-                        Unit
-                      </p>
-                      <div
-                        className="flex flex-col justify-center leading-[0] relative shrink-0 size-[16px] text-[#64748b] text-[12.8px] text-center"
-                        data-node-id="1:624"
-                      >
-                        <p className="leading-[normal]">›</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div
-                  className="content-stretch flex gap-[14px] items-start overflow-clip relative shrink-0 w-full"
-                  data-node-id="1:625"
-                  data-name="Field row"
-                >
-                  <div
-                    className="content-stretch flex flex-[1_0_0] flex-col gap-[7px] items-start min-w-px overflow-clip relative"
-                    data-node-id="1:626"
-                    data-name="Field"
-                  >
-                    <p
-                      className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#172b4d] text-[12px] whitespace-nowrap"
-                      data-node-id="1:627"
-                    >
-                      Merek
-                    </p>
-                    <div
-                      className="bg-white border border-[#dce4ee] border-solid content-stretch flex h-[42px] items-center overflow-clip px-[12px] relative rounded-[8px] shrink-0 w-full"
-                      data-node-id="1:628"
-                      data-name="Input"
-                    >
-                      <p
-                        className="[word-break:break-word] flex-[1_0_0] font-['Inter:Regular'] font-normal leading-[normal] min-w-px not-italic relative text-[#94a3b8] text-[14px]"
-                        data-node-id="1:629"
-                      >
-                        Contoh: Ubiquiti
-                      </p>
-                    </div>
-                  </div>
-                  <div
-                    className="content-stretch flex flex-[1_0_0] flex-col gap-[7px] items-start min-w-px overflow-clip relative"
-                    data-node-id="1:630"
-                    data-name="Field"
-                  >
-                    <p
-                      className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#172b4d] text-[12px] whitespace-nowrap"
-                      data-node-id="1:631"
-                    >
-                      Tipe / model
-                    </p>
-                    <div
-                      className="bg-white border border-[#dce4ee] border-solid content-stretch flex h-[42px] items-center overflow-clip px-[12px] relative rounded-[8px] shrink-0 w-full"
-                      data-node-id="1:632"
-                      data-name="Input"
-                    >
-                      <p
-                        className="[word-break:break-word] flex-[1_0_0] font-['Inter:Regular'] font-normal leading-[normal] min-w-px not-italic relative text-[#94a3b8] text-[14px]"
-                        data-node-id="1:633"
-                      >
-                        Contoh: UniFi U6+
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                <div
-                  className="content-stretch flex flex-col gap-[7px] items-start overflow-clip relative shrink-0 w-full"
-                  data-node-id="1:634"
-                  data-name="Description field"
+                  className={`flex size-[28px] shrink-0 items-center justify-center overflow-clip rounded-[999px] border border-solid ${
+                    l.aktif
+                      ? "border-[#1769e0] bg-[#1769e0]"
+                      : "border-[#dce4ee] bg-[#f8fafc]"
+                  }`}
                 >
                   <p
-                    className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#172b4d] text-[12px] whitespace-nowrap"
-                    data-node-id="1:635"
+                    className={`shrink-0 whitespace-nowrap text-[11px] font-normal not-italic leading-[normal] ${
+                      l.aktif ? "text-white" : "text-[#64748b]"
+                    }`}
                   >
+                    {l.no}
+                  </p>
+                </div>
+                <p
+                  className={`shrink-0 whitespace-nowrap text-[12px] not-italic leading-[normal] ${
+                    l.aktif
+                      ? "font-bold text-[#172b4d]"
+                      : "font-medium text-[#64748b]"
+                  }`}
+                >
+                  {l.label}
+                </p>
+                {l.garis !== undefined && (
+                  <div
+                    className={`h-[2px] w-[220px] shrink-0 ${
+                      l.garis ? "bg-[#1769e0]" : "bg-[#dce4ee]"
+                    }`}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Form columns */}
+          <div className="flex w-full shrink-0 items-start gap-[16px]">
+            {/* Primary form */}
+            <div className="flex min-w-px flex-[1_0_0] flex-col items-start gap-[16px]">
+              <Card>
+                <SectionHeading
+                  icon={PackageSearch}
+                  title="Informasi barang"
+                  desc="Identitas utama yang digunakan pada pencarian dan laporan."
+                />
+                <Row>
+                  <Field
+                    label="Kode barang *"
+                    hint="Dibuat otomatis, dapat disesuaikan."
+                    error={errors.kode}
+                  >
+                    <TextInput
+                      value={kode}
+                      onChange={ubahKode}
+                      error={errors.kode}
+                    />
+                  </Field>
+                  <Field label="Nama barang *" error={errors.nama}>
+                    <TextInput
+                      value={nama}
+                      onChange={ubah(setNama, "nama")}
+                      placeholder="Contoh: Access Point Wi-Fi 6"
+                      error={errors.nama}
+                    />
+                  </Field>
+                </Row>
+                <Row>
+                  <Field label="Kategori">
+                    <SelectInput
+                      value={kategori}
+                      onChange={ubahKategori}
+                      options={opsiKategori}
+                    />
+                  </Field>
+                  <Field label="Satuan">
+                    <SelectInput
+                      value={satuan}
+                      onChange={ubah(setSatuan)}
+                      options={opsiSatuan}
+                    />
+                  </Field>
+                </Row>
+                <Row>
+                  <Field label="Merek">
+                    <TextInput
+                      value={merek}
+                      onChange={ubah(setMerek)}
+                      placeholder="Contoh: Ubiquiti"
+                    />
+                  </Field>
+                  <Field label="Tipe / model">
+                    <TextInput
+                      value={model}
+                      onChange={ubah(setModel)}
+                      placeholder="Contoh: UniFi U6+"
+                    />
+                  </Field>
+                </Row>
+                <div className="flex w-full shrink-0 flex-col items-start gap-[7px]">
+                  <p className="shrink-0 whitespace-nowrap text-[12px] font-normal not-italic leading-[normal] text-[#172b4d]">
                     Deskripsi
                   </p>
-                  <div
-                    className="bg-white border border-[#dce4ee] border-solid content-stretch flex h-[78px] items-start overflow-clip p-[12px] relative rounded-[8px] shrink-0 w-full"
-                    data-node-id="1:636"
-                    data-name="Textarea"
-                  >
-                    <p
-                      className="[word-break:break-word] flex-[1_0_0] font-['Inter:Regular'] font-normal leading-[normal] min-w-px not-italic relative text-[#94a3b8] text-[13px]"
-                      data-node-id="1:637"
-                    >
-                      Tambahkan spesifikasi singkat atau kegunaan barang...
-                    </p>
-                  </div>
+                  <textarea
+                    value={deskripsi}
+                    onChange={(e) => ubah(setDeskripsi)(e.target.value)}
+                    placeholder="Tambahkan spesifikasi singkat atau kegunaan barang..."
+                    className="h-[78px] w-full shrink-0 resize-none rounded-[8px] border border-solid border-[#dce4ee] bg-white p-[12px] text-[13px] font-normal not-italic leading-[1.4] text-[#172b4d] outline-none placeholder:text-[#94a3b8] focus:border-[#1769e0]"
+                  />
                 </div>
-              </div>
-              <div
-                className="bg-white border border-[#dce4ee] border-solid content-stretch drop-shadow-[0px_8px_12px_rgba(18,49,79,0.07)] flex flex-col gap-[20px] items-start p-[22px] relative rounded-[12px] shrink-0 w-full"
-                data-node-id="1:638"
-                data-name="Stock information"
-              >
-                <div
-                  className="content-stretch flex gap-[11px] items-center overflow-clip relative shrink-0 w-full"
-                  data-node-id="1:639"
-                  data-name="Section heading"
-                >
-                  <div
-                    className="bg-[#eaf2ff] content-stretch flex items-center justify-center overflow-clip relative rounded-[8px] shrink-0 size-[36px]"
-                    data-node-id="1:640"
-                    data-name="Section icon"
+              </Card>
+
+              <Card>
+                <SectionHeading
+                  icon={PackageSearch}
+                  title="Stok & lokasi"
+                  desc="Atur saldo awal, ambang minimum, dan posisi penyimpanan."
+                />
+                <Row>
+                  <Field
+                    label="Stok awal *"
+                    hint={
+                      modeEdit
+                        ? "Stok diubah lewat menu Barang Masuk / Keluar."
+                        : "Transaksi awal akan tercatat otomatis."
+                    }
+                    error={errors.stok}
                   >
-                    <div
-                      className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[17px] text-[#1769e0] text-[13.6px] text-center"
-                      data-node-id="1:641"
-                    >
-                      <p className="leading-[normal]">◆</p>
-                    </div>
-                  </div>
-                  <div
-                    className="[word-break:break-word] content-stretch flex flex-[1_0_0] flex-col font-['Inter:Regular'] font-normal gap-[3px] items-start leading-[normal] min-w-px not-italic overflow-clip relative"
-                    data-node-id="1:642"
-                    data-name="Heading copy"
+                    <TextInput
+                      type="number"
+                      value={modeEdit ? String(parseInt(barangEdit!.stok, 10)) : stok}
+                      onChange={ubah(setStok, "stok")}
+                      readOnly={modeEdit}
+                      error={errors.stok}
+                    />
+                  </Field>
+                  <Field
+                    label="Stok minimum *"
+                    hint="Sistem memberi peringatan saat stok ≤ nilai ini."
+                    error={errors.minimum}
                   >
-                    <p
-                      className="relative shrink-0 text-[#172b4d] text-[15px] whitespace-nowrap"
-                      data-node-id="1:643"
-                    >{`Stok & lokasi`}</p>
-                    <p
-                      className="min-w-full relative shrink-0 text-[#64748b] text-[11px] w-[min-content]"
-                      data-node-id="1:644"
-                    >
-                      Atur saldo awal, ambang minimum, dan posisi penyimpanan.
-                    </p>
-                  </div>
-                </div>
-                <div
-                  className="content-stretch flex gap-[14px] items-start overflow-clip relative shrink-0 w-full"
-                  data-node-id="1:645"
-                  data-name="Field row"
-                >
-                  <div
-                    className="content-stretch flex flex-[1_0_0] flex-col gap-[7px] items-start min-w-px overflow-clip relative"
-                    data-node-id="1:646"
-                    data-name="Field"
-                  >
-                    <p
-                      className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#172b4d] text-[12px] whitespace-nowrap"
-                      data-node-id="1:647"
-                    >
-                      Stok awal *
-                    </p>
-                    <div
-                      className="bg-white border border-[#dce4ee] border-solid content-stretch flex h-[42px] items-center overflow-clip px-[12px] relative rounded-[8px] shrink-0 w-full"
-                      data-node-id="1:648"
-                      data-name="Input"
-                    >
-                      <p
-                        className="[word-break:break-word] flex-[1_0_0] font-['Inter:Regular'] font-normal leading-[normal] min-w-px not-italic relative text-[#172b4d] text-[14px]"
-                        data-node-id="1:649"
-                      >
-                        0
-                      </p>
-                    </div>
-                    <p
-                      className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] min-w-full not-italic relative shrink-0 text-[#64748b] text-[11px] w-[min-content]"
-                      data-node-id="1:650"
-                    >
-                      Transaksi awal akan tercatat otomatis.
-                    </p>
-                  </div>
-                  <div
-                    className="content-stretch flex flex-[1_0_0] flex-col gap-[7px] items-start min-w-px overflow-clip relative"
-                    data-node-id="1:651"
-                    data-name="Field"
-                  >
-                    <p
-                      className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#172b4d] text-[12px] whitespace-nowrap"
-                      data-node-id="1:652"
-                    >
-                      Stok minimum *
-                    </p>
-                    <div
-                      className="bg-white border border-[#dce4ee] border-solid content-stretch flex h-[42px] items-center overflow-clip px-[12px] relative rounded-[8px] shrink-0 w-full"
-                      data-node-id="1:653"
-                      data-name="Input"
-                    >
-                      <p
-                        className="[word-break:break-word] flex-[1_0_0] font-['Inter:Regular'] font-normal leading-[normal] min-w-px not-italic relative text-[#172b4d] text-[14px]"
-                        data-node-id="1:654"
-                      >
-                        5
-                      </p>
-                    </div>
-                    <p
-                      className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] min-w-full not-italic relative shrink-0 text-[#64748b] text-[11px] w-[min-content]"
-                      data-node-id="1:655"
-                    >
-                      Sistem memberi peringatan saat stok ≤ nilai ini.
-                    </p>
-                  </div>
-                </div>
-                <div
-                  className="content-stretch flex gap-[14px] items-start overflow-clip relative shrink-0 w-full"
-                  data-node-id="1:656"
-                  data-name="Field row"
-                >
-                  <div
-                    className="[word-break:break-word] content-stretch flex flex-[1_0_0] flex-col font-['Inter:Regular'] font-normal gap-[7px] items-start min-w-px not-italic overflow-clip relative"
-                    data-node-id="1:657"
-                    data-name="Field"
-                  >
-                    <p
-                      className="leading-[normal] relative shrink-0 text-[#172b4d] text-[12px] whitespace-nowrap"
-                      data-node-id="1:658"
-                    >
-                      Lokasi penyimpanan
-                    </p>
-                    <div
-                      className="bg-white border border-[#dce4ee] border-solid content-stretch flex h-[42px] items-center justify-between overflow-clip px-[12px] relative rounded-[8px] shrink-0 w-full"
-                      data-node-id="1:659"
-                      data-name="Selection"
-                    >
-                      <p
-                        className="leading-[normal] relative shrink-0 text-[#172b4d] text-[14px] whitespace-nowrap"
-                        data-node-id="1:660"
-                      >
-                        Gudang Utama
-                      </p>
-                      <div
-                        className="flex flex-col justify-center leading-[0] relative shrink-0 size-[16px] text-[#64748b] text-[12.8px] text-center"
-                        data-node-id="1:661"
-                      >
-                        <p className="leading-[normal]">›</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div
-                    className="content-stretch flex flex-[1_0_0] flex-col gap-[7px] items-start min-w-px overflow-clip relative"
-                    data-node-id="1:662"
-                    data-name="Field"
-                  >
-                    <p
-                      className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#172b4d] text-[12px] whitespace-nowrap"
-                      data-node-id="1:663"
-                    >
-                      Rak / bin *
-                    </p>
-                    <div
-                      className="bg-white border border-[#dce4ee] border-solid content-stretch flex h-[42px] items-center overflow-clip px-[12px] relative rounded-[8px] shrink-0 w-full"
-                      data-node-id="1:664"
-                      data-name="Input"
-                    >
-                      <p
-                        className="[word-break:break-word] flex-[1_0_0] font-['Inter:Regular'] font-normal leading-[normal] min-w-px not-italic relative text-[#94a3b8] text-[14px]"
-                        data-node-id="1:665"
-                      >
-                        Contoh: Rak B-04
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
+                    <TextInput
+                      type="number"
+                      value={minimum}
+                      onChange={ubah(setMinimum, "minimum")}
+                      error={errors.minimum}
+                    />
+                  </Field>
+                </Row>
+                <Row>
+                  <Field label="Lokasi penyimpanan">
+                    <SelectInput
+                      value={gudang}
+                      onChange={ubah(setGudang)}
+                      options={opsiGudang}
+                    />
+                  </Field>
+                  <Field label="Rak / bin *" error={errors.rak}>
+                    <TextInput
+                      value={rak}
+                      onChange={ubah(setRak, "rak")}
+                      placeholder="Contoh: Rak B-04"
+                      error={errors.rak}
+                    />
+                  </Field>
+                </Row>
+              </Card>
             </div>
-            <div
-              className="content-stretch flex flex-col gap-[16px] items-start relative shrink-0 w-[300px]"
-              data-node-id="1:666"
-              data-name="Form guidance"
-            >
+
+            {/* Form guidance */}
+            <div className="relative flex w-[300px] shrink-0 flex-col items-start gap-[16px]">
               <div
-                className="bg-white border border-[#dce4ee] border-solid content-stretch drop-shadow-[0px_8px_12px_rgba(18,49,79,0.07)] flex flex-col gap-[15px] items-start p-[18px] relative rounded-[12px] shrink-0 w-[300px]"
-                data-node-id="1:667"
-                data-name="Record status"
+                role="radiogroup"
+                aria-label="Status data"
+                className="relative flex w-[300px] shrink-0 flex-col items-start gap-[15px] rounded-[12px] border border-solid border-[#dce4ee] bg-white p-[18px] drop-shadow-[0px_8px_12px_rgba(18,49,79,0.07)]"
               >
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#172b4d] text-[14px] whitespace-nowrap"
-                  data-node-id="1:668"
-                >
+                <p className="shrink-0 whitespace-nowrap text-[14px] font-normal not-italic leading-[normal] text-[#172b4d]">
                   Status data
                 </p>
-                <div
-                  className="bg-[#eaf8ef] border border-[#b9e5c8] border-solid content-stretch flex gap-[10px] items-center overflow-clip p-[12px] relative rounded-[8px] shrink-0 w-full"
-                  data-node-id="1:669"
-                  data-name="Status choice"
-                >
-                  <div
-                    className="bg-[#15803d] content-stretch flex items-center justify-center overflow-clip relative rounded-[999px] shrink-0 size-[18px]"
-                    data-node-id="1:670"
-                    data-name="Radio"
-                  >
-                    <div
-                      className="bg-white relative rounded-[999px] shrink-0 size-[6px]"
-                      data-node-id="1:671"
-                      data-name="Radio center"
-                    />
-                  </div>
-                  <div
-                    className="[word-break:break-word] content-stretch flex flex-[1_0_0] flex-col gap-[2px] items-start leading-[normal] min-w-px not-italic overflow-clip relative"
-                    data-node-id="1:672"
-                    data-name="Choice copy"
-                  >
-                    <p
-                      className="font-['Inter:Bold'] font-bold relative shrink-0 text-[#15803d] text-[12px] whitespace-nowrap"
-                      data-node-id="1:673"
-                    >
-                      Aktif
-                    </p>
-                    <p
-                      className="font-['Inter:Regular'] font-normal min-w-full relative shrink-0 text-[#64748b] text-[10px] w-[min-content]"
-                      data-node-id="1:674"
-                    >
-                      Dapat dipakai dalam transaksi
-                    </p>
-                  </div>
-                </div>
-                <div
-                  className="border border-[#dce4ee] border-solid content-stretch flex gap-[10px] items-center overflow-clip p-[12px] relative rounded-[8px] shrink-0 w-full"
-                  data-node-id="1:675"
-                  data-name="Status choice"
-                >
-                  <div
-                    className="border border-[#dce4ee] border-solid relative rounded-[999px] shrink-0 size-[18px]"
-                    data-node-id="1:676"
-                    data-name="Radio"
-                  />
-                  <div
-                    className="[word-break:break-word] content-stretch flex flex-[1_0_0] flex-col font-['Inter:Regular'] font-normal gap-[2px] items-start leading-[normal] min-w-px not-italic overflow-clip relative"
-                    data-node-id="1:677"
-                    data-name="Choice copy"
-                  >
-                    <p
-                      className="relative shrink-0 text-[#172b4d] text-[12px] whitespace-nowrap"
-                      data-node-id="1:678"
-                    >
-                      Nonaktif
-                    </p>
-                    <p
-                      className="min-w-full relative shrink-0 text-[#64748b] text-[10px] w-[min-content]"
-                      data-node-id="1:679"
-                    >
-                      Disimpan sebagai arsip
-                    </p>
-                  </div>
-                </div>
+                <StatusOption
+                  aktif
+                  dipilih={aktif}
+                  judul="Aktif"
+                  desc="Dapat dipakai dalam transaksi"
+                  onClick={() => {
+                    setAktif(true);
+                    setDirty(true);
+                  }}
+                />
+                <StatusOption
+                  aktif={false}
+                  dipilih={!aktif}
+                  judul="Nonaktif"
+                  desc="Disimpan sebagai arsip"
+                  onClick={() => {
+                    setAktif(false);
+                    setDirty(true);
+                  }}
+                />
               </div>
-              <div
-                className="[word-break:break-word] bg-[#eaf2ff] content-stretch flex flex-col font-['Inter:Regular'] font-normal gap-[12px] items-start not-italic overflow-clip p-[18px] relative rounded-[12px] shrink-0 w-full"
-                data-node-id="1:680"
-                data-name="Form tips"
-              >
-                <div
-                  className="content-stretch flex gap-[8px] items-center overflow-clip relative shrink-0"
-                  data-node-id="1:681"
-                  data-name="Tip heading"
-                >
-                  <div
-                    className="flex flex-col justify-center leading-[0] relative shrink-0 size-[17px] text-[#1769e0] text-[13.6px] text-center"
-                    data-node-id="1:682"
-                  >
-                    <p className="leading-[normal]">◆</p>
+
+              <div className="flex w-full shrink-0 flex-col items-start gap-[12px] overflow-clip rounded-[12px] bg-[#eaf2ff] p-[18px] font-normal not-italic">
+                <div className="flex shrink-0 items-center gap-[8px] overflow-clip">
+                  <div className="flex size-[17px] shrink-0 items-center justify-center text-[#1769e0]">
+                    <Lightbulb size={17} />
                   </div>
-                  <p
-                    className="leading-[normal] relative shrink-0 text-[#0e4fab] text-[12px] whitespace-nowrap"
-                    data-node-id="1:683"
-                  >
+                  <p className="shrink-0 whitespace-nowrap text-[12px] leading-[normal] text-[#0e4fab]">
                     Panduan singkat
                   </p>
                 </div>
-                <div
-                  className="content-stretch flex gap-[8px] items-start overflow-clip relative shrink-0 w-full"
-                  data-node-id="1:684"
-                  data-name="Tip"
-                >
-                  <p
-                    className="leading-[normal] relative shrink-0 text-[#1769e0] text-[12px] whitespace-nowrap"
-                    data-node-id="1:685"
+                {tips.map((t) => (
+                  <div
+                    key={t}
+                    className="flex w-full shrink-0 items-start gap-[8px] overflow-clip"
                   >
-                    •
-                  </p>
-                  <p
-                    className="flex-[1_0_0] leading-[1.5] min-w-px relative text-[#0e4fab] text-[10px]"
-                    data-node-id="1:686"
-                  >
-                    Gunakan nama barang yang mudah dikenali.
-                  </p>
-                </div>
-                <div
-                  className="content-stretch flex gap-[8px] items-start overflow-clip relative shrink-0 w-full"
-                  data-node-id="1:687"
-                  data-name="Tip"
-                >
-                  <p
-                    className="leading-[normal] relative shrink-0 text-[#1769e0] text-[12px] whitespace-nowrap"
-                    data-node-id="1:688"
-                  >
-                    •
-                  </p>
-                  <p
-                    className="flex-[1_0_0] leading-[1.5] min-w-px relative text-[#0e4fab] text-[10px]"
-                    data-node-id="1:689"
-                  >
-                    Pastikan kategori dan satuan sudah tepat.
-                  </p>
-                </div>
-                <div
-                  className="content-stretch flex gap-[8px] items-start overflow-clip relative shrink-0 w-full"
-                  data-node-id="1:690"
-                  data-name="Tip"
-                >
-                  <p
-                    className="leading-[normal] relative shrink-0 text-[#1769e0] text-[12px] whitespace-nowrap"
-                    data-node-id="1:691"
-                  >
-                    •
-                  </p>
-                  <p
-                    className="flex-[1_0_0] leading-[1.5] min-w-px relative text-[#0e4fab] text-[10px]"
-                    data-node-id="1:692"
-                  >
-                    Stok minimum membantu mencegah kekosongan.
-                  </p>
-                </div>
+                    <p className="shrink-0 whitespace-nowrap text-[12px] leading-[normal] text-[#1769e0]">
+                      •
+                    </p>
+                    <p className="min-w-px flex-[1_0_0] text-[10px] leading-[1.5] text-[#0e4fab]">
+                      {t}
+                    </p>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
-          <div
-            className="content-stretch flex items-center justify-between overflow-clip pt-[4px] relative shrink-0 w-full"
-            data-node-id="1:693"
-            data-name="Form actions"
-          >
-            <p
-              className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#64748b] text-[11px] whitespace-nowrap"
-              data-node-id="1:694"
-            >
-              Data belum disimpan
+
+          {/* Form actions */}
+          <div className="flex w-full shrink-0 items-center justify-between overflow-clip pt-[4px]">
+            <p className="shrink-0 whitespace-nowrap text-[11px] font-normal not-italic leading-[normal] text-[#64748b]">
+              {dirty ? "Ada perubahan yang belum disimpan" : "Data belum disimpan"}
             </p>
-            <div
-              className="content-stretch flex gap-[9px] items-start overflow-clip relative shrink-0"
-              data-node-id="1:695"
-              data-name="Actions"
-            >
-              <div
-                className="bg-white border border-[#dce4ee] border-solid content-stretch flex h-[40px] items-center justify-center overflow-clip px-[15px] relative rounded-[8px] shrink-0"
-                data-node-id="1:696"
-                data-name="Button"
+            <div className="flex shrink-0 items-start gap-[9px] overflow-clip">
+              <button
+                type="button"
+                onClick={batal}
+                className="flex h-[40px] shrink-0 cursor-pointer items-center justify-center overflow-clip rounded-[8px] border border-solid border-[#dce4ee] bg-white px-[15px] hover:bg-[#f3f6fa]"
               >
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#1769e0] text-[14px] whitespace-nowrap"
-                  data-node-id="1:697"
-                >
+                <span className="shrink-0 whitespace-nowrap text-[14px] font-normal not-italic leading-[normal] text-[#1769e0]">
                   Batal
-                </p>
-              </div>
-              <div
-                className="[word-break:break-word] bg-[#1769e0] border border-[#1769e0] border-solid content-stretch flex font-['Inter:Regular'] font-normal gap-[8px] h-[40px] items-center justify-center not-italic overflow-clip px-[15px] relative rounded-[8px] shrink-0 text-white"
-                data-node-id="1:698"
-                data-name="Button"
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={simpan}
+                className="flex h-[40px] shrink-0 cursor-pointer items-center justify-center gap-[8px] overflow-clip rounded-[8px] border border-solid border-[#1769e0] bg-[#1769e0] px-[15px] font-normal not-italic text-white hover:bg-[#0e4fab]"
               >
-                <div
-                  className="flex flex-col justify-center leading-[0] relative shrink-0 size-[16px] text-[12.8px] text-center"
-                  data-node-id="1:699"
-                >
-                  <p className="leading-[normal]">◆</p>
-                </div>
-                <p
-                  className="leading-[normal] relative shrink-0 text-[14px] whitespace-nowrap"
-                  data-node-id="1:700"
-                >
-                  Simpan barang
-                </p>
-              </div>
+                <Save size={16} className="shrink-0" />
+                <span className="shrink-0 whitespace-nowrap text-[14px] leading-[normal]">
+                  {modeEdit ? "Simpan perubahan" : "Simpan barang"}
+                </span>
+              </button>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Notifikasi */}
+      {toast && (
+        <div
+          role="status"
+          className="fixed bottom-[24px] right-[24px] z-50 max-w-[360px] rounded-[10px] bg-[#172b4d] px-[16px] py-[12px] shadow-lg"
+        >
+          <p className="text-[13px] font-normal not-italic leading-[1.4] text-white">
+            {toast}
+          </p>
+        </div>
+      )}
     </div>
-  )
+  );
 }

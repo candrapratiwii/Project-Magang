@@ -1,1170 +1,598 @@
-const assetPathPrefix = "/assets"
-const imgIndicator = `${assetPathPrefix}/3a5de.svg`
-const imgIndicator1 = `${assetPathPrefix}/e693b.svg`
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Eye,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  Boxes,
+  PackageCheck,
+  TriangleAlert,
+  CircleAlert,
+  CircleCheck,
+  Cable,
+  Plug,
+  Router,
+  Network,
+  Wifi,
+  Server,
+  Zap,
+  Plus,
+  Search,
+  Download,
+  X,
+  type LucideIcon,
+} from "lucide-react";
+import { useAuth } from "../auth";
+import Sidebar from "../Components/Sidebar";
 
-export default function MasterBarangScreen() {
+/* ------------------------------ Data ------------------------------ */
+
+interface Ringkasan {
+  nilai: string;
+  label: string;
+  icon: LucideIcon;
+  bg: string;
+  color: string;
+}
+
+interface Barang {
+  kode: string;
+  nama: string;
+  icon: LucideIcon;
+  kategori: string;
+  lokasi: string;
+  stok: string;
+  minimum: string;
+  menipis?: boolean;
+}
+
+const barang: Barang[] = [
+  { kode: "MAT-LAN-006", nama: "Kabel LAN Cat6 UTP 305m", icon: Cable, kategori: "Kabel & aksesori", lokasi: "Gudang Utama · Rak A-01", stok: "18 roll", minimum: "8" },
+  { kode: "MAT-RJ45-006", nama: "Konektor RJ45 Cat6", icon: Plug, kategori: "Material jaringan", lokasi: "Gudang Utama · Bin A-12", stok: "28 pcs", minimum: "50", menipis: true },
+  { kode: "NET-RTR-012", nama: "Router MikroTik RB4011", icon: Router, kategori: "Perangkat jaringan", lokasi: "Gudang Utama · Rak B-01", stok: "12 unit", minimum: "5" },
+  { kode: "NET-SWI-024", nama: "Switch Managed 24 Port PoE", icon: Network, kategori: "Perangkat jaringan", lokasi: "Gudang Utama · Rak B-02", stok: "8 unit", minimum: "5" },
+  { kode: "NET-AP-018", nama: "Access Point Wi-Fi 6", icon: Wifi, kategori: "Perangkat jaringan", lokasi: "Gudang Utama · Rak B-04", stok: "14 unit", minimum: "6" },
+  { kode: "NET-SFP-001", nama: "SFP Module 1G Single Mode", icon: Network, kategori: "Perangkat jaringan", lokasi: "Gudang Utama · Rak B-03", stok: "4 unit", minimum: "10", menipis: true },
+  { kode: "MAT-PC-001", nama: "Patch Cord Cat6 1m", icon: Cable, kategori: "Kabel & aksesori", lokasi: "Gudang Utama · Rak A-05", stok: "12 pcs", minimum: "20", menipis: true },
+  { kode: "NET-FW-003", nama: "Firewall FortiGate 60F", icon: Server, kategori: "Perangkat jaringan", lokasi: "Gudang Cadangan · Rak C-02", stok: "3 unit", minimum: "4", menipis: true },
+  { kode: "PND-UPS-005", nama: "UPS 1200VA", icon: Zap, kategori: "Perangkat pendukung", lokasi: "Gudang Aptika · Rak D-01", stok: "6 unit", minimum: "3" },
+];
+
+const ITEM_PER_HALAMAN = 5;
+
+const KEY_TERPILIH = "simpera-barang-terpilih";
+const KEY_TERSIMPAN = "simpera-barang-tersimpan";
+const KEY_DIHAPUS = "simpera-barang-dihapus";
+
+const gudangDari = (lokasi: string) => lokasi.split(" · ")[0];
+const unik = (arr: string[]) => Array.from(new Set(arr)).sort();
+const angkaStok = (stok: string) => parseInt(stok, 10) || 0;
+
+const opsiStatus = ["Tersedia", "Menipis"];
+
+const statusDari = (b: Barang) => (b.menipis ? "Menipis" : "Tersedia");
+
+/* Buka halaman detail. Edit dan hapus dilakukan dari halaman detail. */
+function bukaDetail(kode: string) {
+  try {
+    sessionStorage.setItem(KEY_TERPILIH, kode);
+  } catch {
+    /* abaikan */
+  }
+  window.location.hash = "detail";
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+/* Tombol "Tambah barang": buka form kosong (hapus kode terpilih dulu) */
+function bukaFormBaru() {
+  try {
+    sessionStorage.removeItem(KEY_TERPILIH);
+  } catch {
+    /* abaikan */
+  }
+  window.location.hash = "form";
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+const ikonKategori: Record<string, LucideIcon> = {
+  "Perangkat jaringan": Network,
+  "Kabel & aksesori": Cable,
+  "Material jaringan": Plug,
+  "Perangkat pendukung": Zap,
+};
+
+function bacaJson<T>(key: string, awal: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : awal;
+  } catch {
+    return awal;
+  }
+}
+
+function gabungDataTersimpan(dasar: Barang[]): Barang[] {
+  const tersimpan = bacaJson<Omit<Barang, "icon">[]>(KEY_TERSIMPAN, []);
+  const dihapus = new Set(bacaJson<string[]>(KEY_DIHAPUS, []));
+  const kode = new Set(tersimpan.map((b) => b.kode));
+  return [
+    ...dasar.filter((b) => !kode.has(b.kode)),
+    ...tersimpan.map((b) => ({ ...b, icon: ikonKategori[b.kategori] ?? Boxes })),
+  ].filter((b) => !dihapus.has(b.kode));
+}
+
+/* ------------------------------ Unduh CSV ------------------------------ */
+
+function unduhCsv(rows: Barang[]) {
+  const header = ["Kode", "Nama barang", "Kategori", "Lokasi", "Stok", "Minimum", "Status"];
+  const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
+  const baris = [
+    header,
+    ...rows.map((b) => [b.kode, b.nama, b.kategori, b.lokasi, b.stok, b.minimum, statusDari(b)]),
+  ]
+    .map((r) => r.map(esc).join(";"))
+    .join("\r\n");
+
+  const blob = new Blob(["\uFEFF" + baris], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `master-barang-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/* --------------------------- Komponen kecil --------------------------- */
+
+function SummaryCard({ r }: { r: Ringkasan }) {
+  const Icon = r.icon;
   return (
-    <div
-      className="bg-[#f3f6fa] content-stretch flex items-start relative size-full"
-      data-node-id="1:219"
-      data-name="Master Barang screen"
-    >
+    <div className="relative flex min-w-px flex-[1_0_0] items-center gap-[11px] overflow-clip rounded-[8px] border border-solid border-[#dce4ee] bg-white p-[14px]">
       <div
-        className="bg-[#102a43] content-stretch flex flex-col gap-[22px] items-start min-h-[1024px] overflow-clip pb-[20px] pt-[24px] px-[22px] relative self-stretch shrink-0 w-[244px]"
-        data-node-id="1:220"
-        data-name="Sidebar"
+        className="flex size-[34px] shrink-0 items-center justify-center overflow-clip rounded-[8px]"
+        style={{ backgroundColor: r.bg }}
       >
-        <p
-          className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[15px] text-white w-full"
-          data-node-id="1:221"
-        >
-          SIMPERA-NET
-        </p>
-        <p
-          className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#d5e2ef] text-[12px] w-full"
-          data-node-id="1:222"
-        >
-          Bidang Teknologi dan Informasi
-        </p>
         <div
-          className="bg-[#29455f] h-px relative shrink-0 w-full"
-          data-node-id="1:223"
-          data-name="Divider"
-        />
-        <div
-          className="[word-break:break-word] content-stretch flex flex-col gap-[18px] items-start leading-[normal] not-italic overflow-clip relative shrink-0 text-[12px] w-full"
-          data-node-id="1:224"
-          data-name="Navigation"
+          className="flex size-[16px] shrink-0 items-center justify-center"
+          style={{ color: r.color }}
         >
-          <p
-            className="font-['Inter:Medium'] font-medium relative shrink-0 text-[#d7e2ec] w-full"
-            data-node-id="1:225"
-          >
-            Dashboard
-          </p>
-          <p
-            className="font-['Inter:Regular'] font-normal relative shrink-0 text-[#65a1ff] w-full whitespace-pre-wrap"
-            data-node-id="1:226"
-          >{`●  Master Barang`}</p>
-          <p
-            className="font-['Inter:Medium'] font-medium relative shrink-0 text-[#d7e2ec] w-full"
-            data-node-id="1:227"
-          >
-            Barang Masuk
-          </p>
-          <p
-            className="font-['Inter:Medium'] font-medium relative shrink-0 text-[#d7e2ec] w-full"
-            data-node-id="1:228"
-          >
-            Barang Keluar
-          </p>
-          <p
-            className="font-['Inter:Medium'] font-medium relative shrink-0 text-[#d7e2ec] w-full"
-            data-node-id="1:229"
-          >
-            Stok Opname
-          </p>
-          <p
-            className="font-['Inter:Medium'] font-medium relative shrink-0 text-[#d7e2ec] w-full"
-            data-node-id="1:230"
-          >
-            Laporan
-          </p>
-          <p
-            className="font-['Inter:Medium'] font-medium relative shrink-0 text-[#d7e2ec] w-full"
-            data-node-id="1:231"
-          >
-            Manajemen Pengguna
-          </p>
+          <Icon size={16} />
         </div>
       </div>
+      <div className="flex shrink-0 flex-col items-start gap-[2px] overflow-clip whitespace-nowrap font-normal not-italic leading-[normal]">
+        <p className="shrink-0 text-[18px] text-[#172b4d]">{r.nilai}</p>
+        <p className="shrink-0 text-[10px] text-[#64748b]">{r.label}</p>
+      </div>
+    </div>
+  );
+}
+
+function StockStatus({ menipis }: { menipis?: boolean }) {
+  const Icon = menipis ? CircleAlert : CircleCheck;
+  return (
+    <div
+      className={`flex shrink-0 items-center gap-[5px] overflow-clip rounded-[999px] px-[9px] py-[5px] ${
+        menipis ? "bg-[#fef0ef]" : "bg-[#eaf8ef]"
+      }`}
+    >
       <div
-        className="content-stretch flex flex-[1_0_0] flex-col items-start min-h-[1040px] min-w-px overflow-clip relative"
-        data-node-id="1:232"
-        data-name="Workspace"
+        className={`flex size-[12px] shrink-0 items-center justify-center ${
+          menipis ? "text-[#c2413a]" : "text-[#15803d]"
+        }`}
       >
-        <div
-          className="[word-break:break-word] bg-white border-[#dce4ee] border-b border-solid content-stretch flex h-[76px] items-center justify-between leading-[normal] not-italic overflow-clip px-[32px] relative shrink-0 w-full whitespace-nowrap"
-          data-node-id="1:233"
-          data-name="Top bar"
+        <Icon size={12} />
+      </div>
+      <p
+        className={`shrink-0 whitespace-nowrap text-[12px] font-normal not-italic leading-[normal] ${
+          menipis ? "text-[#c2413a]" : "text-[#15803d]"
+        }`}
+      >
+        {menipis ? "Menipis" : "Tersedia"}
+      </p>
+    </div>
+  );
+}
+
+/* Dropdown filter. value "" = semua */
+function FilterSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (v: string) => void;
+}) {
+  const [buka, setBuka] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!buka) return;
+    const klikLuar = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setBuka(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setBuka(false);
+    document.addEventListener("mousedown", klikLuar);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", klikLuar);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [buka]);
+
+  const aktif = value !== "";
+  const semua = [label, ...options];
+
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setBuka((v) => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={buka}
+        className={`flex h-[40px] shrink-0 cursor-pointer items-center gap-[10px] overflow-clip rounded-[8px] border border-solid bg-white px-[12px] font-normal not-italic ${
+          aktif ? "border-[#1769e0] bg-[#eaf2ff]" : "border-[#dce4ee]"
+        }`}
+      >
+        <span
+          className={`shrink-0 whitespace-nowrap text-[14px] leading-[normal] ${
+            aktif ? "text-[#1769e0]" : "text-[#172b4d]"
+          }`}
         >
-          <p
-            className="font-['Inter:Bold'] font-bold relative shrink-0 text-[#172b4d] text-[16px]"
-            data-node-id="1:234"
-          >
+          {aktif ? value : label}
+        </span>
+        <ChevronDown size={14} className="shrink-0 text-[#64748b]" />
+      </button>
+
+      {buka && (
+        <div
+          role="listbox"
+          className="absolute left-0 top-[44px] z-20 min-w-full w-max rounded-[10px] border border-solid border-[#dce4ee] bg-white p-[6px] shadow-lg"
+        >
+          {semua.map((opsi, i) => {
+            const terpilih = i === 0 ? !aktif : value === opsi;
+            return (
+              <button
+                key={opsi}
+                type="button"
+                role="option"
+                aria-selected={terpilih}
+                onClick={() => {
+                  onChange(i === 0 ? "" : opsi);
+                  setBuka(false);
+                }}
+                className={`flex w-full items-center rounded-[6px] px-[10px] py-[8px] text-left text-[13px] hover:bg-[#f3f6fa] ${
+                  terpilih ? "bg-[#eaf2ff] text-[#1769e0]" : "text-[#172b4d]"
+                }`}
+              >
+                {opsi}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------ Halaman ------------------------------ */
+
+export default function MasterBarangScreen() {
+  const { user } = useAuth();
+
+  const [cari, setCari] = useState("");
+  const [kategori, setKategori] = useState("");
+  const [status, setStatus] = useState("");
+  const [lokasi, setLokasi] = useState("");
+  const [halaman, setHalaman] = useState(1);
+  const [daftar] = useState<Barang[]>(() => gabungDataTersimpan(barang));
+
+  const opsiKategori = useMemo(() => unik(daftar.map((b) => b.kategori)), [daftar]);
+  const opsiLokasi = useMemo(() => unik(daftar.map((b) => gudangDari(b.lokasi))), [daftar]);
+
+  /* Kritis = barang menipis dengan stok <= separuh minimum. */
+  const ringkasan: Ringkasan[] = useMemo(() => {
+    const total = daftar.length;
+    const menipis = daftar.filter((b) => b.menipis).length;
+    const kritis = daftar.filter(
+      (b) => b.menipis && angkaStok(b.stok) <= Number(b.minimum) / 2,
+    ).length;
+    return [
+      { nilai: String(total), label: "Total jenis", icon: Boxes, bg: "#eaf2ff", color: "#1769e0" },
+      { nilai: String(total - menipis), label: "Stok tersedia", icon: PackageCheck, bg: "#eaf8ef", color: "#15803d" },
+      { nilai: String(menipis), label: "Stok menipis", icon: TriangleAlert, bg: "#fff7e6", color: "#b45309" },
+      { nilai: String(kritis), label: "Stok kritis", icon: CircleAlert, bg: "#fef0ef", color: "#c2413a" },
+    ];
+  }, [daftar]);
+
+  const adaFilter = cari.trim() !== "" || kategori !== "" || status !== "" || lokasi !== "";
+
+  const hasil = useMemo(() => {
+    const q = cari.trim().toLowerCase();
+    return daftar.filter(
+      (b) =>
+        (q === "" || b.kode.toLowerCase().includes(q) || b.nama.toLowerCase().includes(q)) &&
+        (kategori === "" || b.kategori === kategori) &&
+        (status === "" || statusDari(b) === status) &&
+        (lokasi === "" || gudangDari(b.lokasi) === lokasi)
+    );
+  }, [daftar, cari, kategori, status, lokasi]);
+
+  const totalHalaman = Math.max(1, Math.ceil(hasil.length / ITEM_PER_HALAMAN));
+  const halamanAktif = Math.min(halaman, totalHalaman);
+  const mulai = (halamanAktif - 1) * ITEM_PER_HALAMAN;
+  const tampil = hasil.slice(mulai, mulai + ITEM_PER_HALAMAN);
+
+  const ubah = (setter: (v: string) => void) => (v: string) => {
+    setter(v);
+    setHalaman(1);
+  };
+
+  const reset = () => {
+    setCari("");
+    setKategori("");
+    setStatus("");
+    setLokasi("");
+    setHalaman(1);
+  };
+
+  return (
+    <div className="relative flex size-full items-start bg-[#f3f6fa]">
+      <Sidebar active="Master Barang" />
+
+      <div className="relative flex min-h-[1040px] min-w-px flex-[1_0_0] flex-col items-start overflow-clip">
+        {/* Top bar */}
+        <div className="flex h-[76px] w-full shrink-0 items-center justify-between overflow-clip whitespace-nowrap border-b border-solid border-[#dce4ee] bg-white px-[32px] not-italic leading-[normal]">
+          <p className="shrink-0 text-[16px] font-bold text-[#172b4d]">
             Sistem Persediaan Infrastruktur TIK
           </p>
-          <p
-            className="font-['Inter:Regular'] font-normal relative shrink-0 text-[#64748b] text-[12px]"
-            data-node-id="1:235"
-          >
-            Ayu Pramesti · Admin
+          <p className="shrink-0 text-[12px] font-normal text-[#64748b]">
+            {user?.nama} · {user?.role}
           </p>
         </div>
-        <div
-          className="content-stretch flex flex-col gap-[24px] items-start overflow-clip p-[32px] relative shrink-0 w-full"
-          data-node-id="1:236"
-          data-name="Page content"
-        >
-          <div
-            className="[word-break:break-word] content-stretch flex font-['Inter:Regular'] font-normal items-center justify-between not-italic overflow-clip relative shrink-0 w-full"
-            data-node-id="1:237"
-            data-name="Page heading"
-          >
-            <div
-              className="content-stretch flex flex-[1_0_0] flex-col gap-[5px] items-start leading-[normal] min-w-px overflow-clip relative"
-              data-node-id="1:238"
-              data-name="Heading copy"
-            >
-              <p
-                className="relative shrink-0 text-[#172b4d] text-[26px] w-full"
-                data-node-id="1:239"
-              >
+
+        {/* Page content */}
+        <div className="flex w-full shrink-0 flex-col items-start gap-[24px] overflow-clip p-[32px]">
+          {/* Page heading */}
+          <div className="flex w-full shrink-0 items-center justify-between overflow-clip font-normal not-italic">
+            <div className="flex min-w-px flex-[1_0_0] flex-col items-start gap-[5px] overflow-clip leading-[normal]">
+              <p className="w-full shrink-0 text-[26px] text-[#172b4d]">
                 Master Barang
               </p>
-              <p
-                className="relative shrink-0 text-[#64748b] text-[14px] w-full"
-                data-node-id="1:240"
-              >
+              <p className="w-full shrink-0 text-[14px] text-[#64748b]">
                 Kelola data induk perangkat dan material infrastruktur TIK
               </p>
             </div>
-            <div
-              className="bg-[#1769e0] border border-[#1769e0] border-solid content-stretch flex gap-[8px] h-[40px] items-center justify-center overflow-clip px-[15px] relative rounded-[8px] shrink-0 text-white"
-              data-node-id="1:241"
-              data-name="Button"
+            <button
+              type="button"
+              onClick={bukaFormBaru}
+              className="flex h-[40px] shrink-0 cursor-pointer items-center justify-center gap-[8px] overflow-clip rounded-[8px] border border-solid border-[#1769e0] bg-[#1769e0] px-[15px] text-white hover:bg-[#0e4fab]"
             >
-              <div
-                className="flex flex-col justify-center leading-[0] relative shrink-0 size-[16px] text-[12.8px] text-center"
-                data-node-id="1:242"
-              >
-                <p className="leading-[normal]">+</p>
-              </div>
-              <p
-                className="leading-[normal] relative shrink-0 text-[14px] whitespace-nowrap"
-                data-node-id="1:243"
-              >
+              <Plus size={16} className="shrink-0" />
+              <span className="shrink-0 whitespace-nowrap text-[14px] leading-[normal]">
                 Tambah barang
-              </p>
-            </div>
+              </span>
+            </button>
           </div>
-          <div
-            className="content-stretch flex gap-[10px] items-end overflow-clip relative shrink-0 w-full"
-            data-node-id="1:244"
-            data-name="Toolbar"
-          >
-            <div
-              className="[word-break:break-word] bg-white border border-[#dce4ee] border-solid content-stretch flex font-['Inter:Regular'] font-normal gap-[8px] h-[40px] items-center not-italic overflow-clip px-[12px] relative rounded-[8px] shrink-0 text-[#94a3b8] w-[320px]"
-              data-node-id="1:245"
-              data-name="Search"
-            >
-              <div
-                className="flex flex-col justify-center leading-[0] relative shrink-0 size-[16px] text-[12.8px] text-center"
-                data-node-id="1:246"
-              >
-                <p className="leading-[normal]">⌕</p>
-              </div>
-              <p
-                className="flex-[1_0_0] leading-[normal] min-w-px relative text-[14px]"
-                data-node-id="1:247"
-              >
-                Cari kode atau nama barang...
-              </p>
+
+          {/* Toolbar */}
+          <div className="flex w-full shrink-0 items-end gap-[10px]">
+            <div className="flex h-[40px] w-[320px] shrink-0 items-center gap-[8px] overflow-clip rounded-[8px] border border-solid border-[#dce4ee] bg-white px-[12px] font-normal not-italic text-[#94a3b8] focus-within:border-[#1769e0]">
+              <Search size={16} className="shrink-0" />
+              <input
+                type="text"
+                value={cari}
+                onChange={(e) => ubah(setCari)(e.target.value)}
+                onKeyDown={(e) => e.key === "Escape" && ubah(setCari)("")}
+                placeholder="Cari kode atau nama barang..."
+                aria-label="Cari kode atau nama barang"
+                className="min-w-px flex-[1_0_0] bg-transparent text-[14px] leading-[normal] text-[#172b4d] outline-none placeholder:text-[#94a3b8]"
+              />
+              {cari && (
+                <button
+                  type="button"
+                  aria-label="Hapus pencarian"
+                  onClick={() => ubah(setCari)("")}
+                  className="flex shrink-0 items-center justify-center text-[#64748b]"
+                >
+                  <X size={14} />
+                </button>
+              )}
             </div>
-            <div
-              className="[word-break:break-word] bg-white border border-[#dce4ee] border-solid content-stretch flex font-['Inter:Regular'] font-normal gap-[10px] h-[40px] items-center not-italic overflow-clip px-[12px] relative rounded-[8px] shrink-0"
-              data-node-id="1:248"
-              data-name="Filter"
-            >
-              <p
-                className="leading-[normal] relative shrink-0 text-[#172b4d] text-[14px] whitespace-nowrap"
-                data-node-id="1:249"
-              >
-                Semua kategori
-              </p>
-              <div
-                className="flex flex-col justify-center leading-[0] relative shrink-0 size-[14px] text-[#64748b] text-[11.2px] text-center"
-                data-node-id="1:250"
-              >
-                <p className="leading-[normal]">›</p>
-              </div>
-            </div>
-            <div
-              className="[word-break:break-word] bg-white border border-[#dce4ee] border-solid content-stretch flex font-['Inter:Regular'] font-normal gap-[10px] h-[40px] items-center not-italic overflow-clip px-[12px] relative rounded-[8px] shrink-0"
-              data-node-id="1:251"
-              data-name="Filter"
-            >
-              <p
-                className="leading-[normal] relative shrink-0 text-[#172b4d] text-[14px] whitespace-nowrap"
-                data-node-id="1:252"
-              >
-                Semua status
-              </p>
-              <div
-                className="flex flex-col justify-center leading-[0] relative shrink-0 size-[14px] text-[#64748b] text-[11.2px] text-center"
-                data-node-id="1:253"
-              >
-                <p className="leading-[normal]">›</p>
-              </div>
-            </div>
-            <div
-              className="[word-break:break-word] bg-white border border-[#dce4ee] border-solid content-stretch flex font-['Inter:Regular'] font-normal gap-[10px] h-[40px] items-center not-italic overflow-clip px-[12px] relative rounded-[8px] shrink-0"
-              data-node-id="1:254"
-              data-name="Filter"
-            >
-              <p
-                className="leading-[normal] relative shrink-0 text-[#172b4d] text-[14px] whitespace-nowrap"
-                data-node-id="1:255"
-              >
-                Semua lokasi
-              </p>
-              <div
-                className="flex flex-col justify-center leading-[0] relative shrink-0 size-[14px] text-[#64748b] text-[11.2px] text-center"
-                data-node-id="1:256"
-              >
-                <p className="leading-[normal]">›</p>
-              </div>
-            </div>
-            <div
-              className="flex-[1_0_0] h-px min-w-px relative"
-              data-node-id="1:257"
-              data-name="Toolbar spacer"
+
+            <FilterSelect
+              label="Semua kategori"
+              value={kategori}
+              options={opsiKategori}
+              onChange={ubah(setKategori)}
             />
-            <div
-              className="[word-break:break-word] bg-white border border-[#dce4ee] border-solid content-stretch flex font-['Inter:Regular'] font-normal gap-[8px] h-[40px] items-center justify-center not-italic overflow-clip px-[15px] relative rounded-[8px] shrink-0 text-[#1769e0]"
-              data-node-id="1:258"
-              data-name="Button"
+            <FilterSelect
+              label="Semua status"
+              value={status}
+              options={opsiStatus}
+              onChange={ubah(setStatus)}
+            />
+            <FilterSelect
+              label="Semua lokasi"
+              value={lokasi}
+              options={opsiLokasi}
+              onChange={ubah(setLokasi)}
+            />
+
+            {adaFilter && (
+              <button
+                type="button"
+                onClick={reset}
+                className="h-[40px] shrink-0 whitespace-nowrap px-[6px] text-[13px] text-[#1769e0] hover:underline"
+              >
+                Reset filter
+              </button>
+            )}
+
+            <div className="h-px min-w-px flex-[1_0_0]" />
+
+            <button
+              type="button"
+              onClick={() => unduhCsv(hasil)}
+              disabled={hasil.length === 0}
+              title={`Unduh ${hasil.length} barang (CSV)`}
+              className="flex h-[40px] shrink-0 cursor-pointer items-center justify-center gap-[8px] overflow-clip rounded-[8px] border border-solid border-[#dce4ee] bg-white px-[15px] font-normal not-italic text-[#1769e0] hover:bg-[#f3f6fa] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <div
-                className="flex flex-col justify-center leading-[0] relative shrink-0 size-[16px] text-[12.8px] text-center"
-                data-node-id="1:259"
-              >
-                <p className="leading-[normal]">◆</p>
-              </div>
-              <p
-                className="leading-[normal] relative shrink-0 text-[14px] whitespace-nowrap"
-                data-node-id="1:260"
-              >
+              <Download size={16} className="shrink-0" />
+              <span className="shrink-0 whitespace-nowrap text-[14px] leading-[normal]">
                 Unduh data
-              </p>
-            </div>
+              </span>
+            </button>
           </div>
-          <div
-            className="content-stretch flex gap-[10px] items-start overflow-clip relative shrink-0 w-full"
-            data-node-id="1:261"
-            data-name="Inventory summary"
-          >
-            <div
-              className="bg-white border border-[#dce4ee] border-solid content-stretch flex flex-[1_0_0] gap-[11px] items-center min-w-px overflow-clip p-[14px] relative rounded-[8px]"
-              data-node-id="1:262"
-              data-name="Summary card"
-            >
-              <div
-                className="bg-[#eaf2ff] content-stretch flex items-center justify-center overflow-clip relative rounded-[8px] shrink-0 size-[34px]"
-                data-node-id="1:263"
-                data-name="Icon background"
-              >
-                <div
-                  className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[16px] text-[#1769e0] text-[12.8px] text-center"
-                  data-node-id="1:264"
-                >
-                  <p className="leading-[normal]">◆</p>
-                </div>
-              </div>
-              <div
-                className="[word-break:break-word] content-stretch flex flex-col font-['Inter:Regular'] font-normal gap-[2px] items-start leading-[normal] not-italic overflow-clip relative shrink-0 whitespace-nowrap"
-                data-node-id="1:265"
-                data-name="Summary"
-              >
-                <p
-                  className="relative shrink-0 text-[#172b4d] text-[18px]"
-                  data-node-id="1:266"
-                >
-                  42
-                </p>
-                <p
-                  className="relative shrink-0 text-[#64748b] text-[10px]"
-                  data-node-id="1:267"
-                >
-                  Total jenis
-                </p>
-              </div>
-            </div>
-            <div
-              className="bg-white border border-[#dce4ee] border-solid content-stretch flex flex-[1_0_0] gap-[11px] items-center min-w-px overflow-clip p-[14px] relative rounded-[8px]"
-              data-node-id="1:268"
-              data-name="Summary card"
-            >
-              <div
-                className="bg-[#eaf8ef] content-stretch flex items-center justify-center overflow-clip relative rounded-[8px] shrink-0 size-[34px]"
-                data-node-id="1:269"
-                data-name="Icon background"
-              >
-                <div
-                  className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[16px] text-[#15803d] text-[12.8px] text-center"
-                  data-node-id="1:270"
-                >
-                  <p className="leading-[normal]">✓</p>
-                </div>
-              </div>
-              <div
-                className="[word-break:break-word] content-stretch flex flex-col font-['Inter:Regular'] font-normal gap-[2px] items-start leading-[normal] not-italic overflow-clip relative shrink-0 whitespace-nowrap"
-                data-node-id="1:271"
-                data-name="Summary"
-              >
-                <p
-                  className="relative shrink-0 text-[#172b4d] text-[18px]"
-                  data-node-id="1:272"
-                >
-                  36
-                </p>
-                <p
-                  className="relative shrink-0 text-[#64748b] text-[10px]"
-                  data-node-id="1:273"
-                >
-                  Stok tersedia
-                </p>
-              </div>
-            </div>
-            <div
-              className="bg-white border border-[#dce4ee] border-solid content-stretch flex flex-[1_0_0] gap-[11px] items-center min-w-px overflow-clip p-[14px] relative rounded-[8px]"
-              data-node-id="1:274"
-              data-name="Summary card"
-            >
-              <div
-                className="bg-[#fff7e6] content-stretch flex items-center justify-center overflow-clip relative rounded-[8px] shrink-0 size-[34px]"
-                data-node-id="1:275"
-                data-name="Icon background"
-              >
-                <div
-                  className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[16px] text-[#b45309] text-[12.8px] text-center"
-                  data-node-id="1:276"
-                >
-                  <p className="leading-[normal]">!</p>
-                </div>
-              </div>
-              <div
-                className="[word-break:break-word] content-stretch flex flex-col font-['Inter:Regular'] font-normal gap-[2px] items-start leading-[normal] not-italic overflow-clip relative shrink-0 whitespace-nowrap"
-                data-node-id="1:277"
-                data-name="Summary"
-              >
-                <p
-                  className="relative shrink-0 text-[#172b4d] text-[18px]"
-                  data-node-id="1:278"
-                >
-                  4
-                </p>
-                <p
-                  className="relative shrink-0 text-[#64748b] text-[10px]"
-                  data-node-id="1:279"
-                >
-                  Stok menipis
-                </p>
-              </div>
-            </div>
-            <div
-              className="bg-white border border-[#dce4ee] border-solid content-stretch flex flex-[1_0_0] gap-[11px] items-center min-w-px overflow-clip p-[14px] relative rounded-[8px]"
-              data-node-id="1:280"
-              data-name="Summary card"
-            >
-              <div
-                className="bg-[#fef0ef] content-stretch flex items-center justify-center overflow-clip relative rounded-[8px] shrink-0 size-[34px]"
-                data-node-id="1:281"
-                data-name="Icon background"
-              >
-                <div
-                  className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[16px] text-[#c2413a] text-[12.8px] text-center"
-                  data-node-id="1:282"
-                >
-                  <p className="leading-[normal]">!</p>
-                </div>
-              </div>
-              <div
-                className="[word-break:break-word] content-stretch flex flex-col font-['Inter:Regular'] font-normal gap-[2px] items-start leading-[normal] not-italic overflow-clip relative shrink-0 whitespace-nowrap"
-                data-node-id="1:283"
-                data-name="Summary"
-              >
-                <p
-                  className="relative shrink-0 text-[#172b4d] text-[18px]"
-                  data-node-id="1:284"
-                >
-                  2
-                </p>
-                <p
-                  className="relative shrink-0 text-[#64748b] text-[10px]"
-                  data-node-id="1:285"
-                >
-                  Stok kritis
-                </p>
-              </div>
-            </div>
+
+          {/* Inventory summary */}
+          <div className="flex w-full shrink-0 items-start gap-[10px] overflow-clip">
+            {ringkasan.map((r) => (
+              <SummaryCard key={r.label} r={r} />
+            ))}
           </div>
-          <div
-            className="bg-white border border-[#dce4ee] border-solid content-stretch drop-shadow-[0px_8px_12px_rgba(18,49,79,0.07)] flex flex-col items-start relative rounded-[12px] shrink-0 w-full"
-            data-node-id="1:286"
-            data-name="Inventory table"
-          >
-            <div
-              className="[word-break:break-word] bg-[#f8fafc] border-[#dce4ee] border-b border-solid content-stretch flex font-['Inter:Regular'] font-normal gap-[12px] h-[42px] items-center leading-[normal] not-italic px-[16px] relative shrink-0 text-[#64748b] text-[11px] uppercase w-full"
-              data-node-id="1:287"
-              data-name="Table header"
-            >
-              <p className="relative shrink-0 w-[105px]" data-node-id="1:288">
-                Kode
-              </p>
-              <p className="relative shrink-0 w-[225px]" data-node-id="1:289">
-                Nama barang
-              </p>
-              <p className="relative shrink-0 w-[140px]" data-node-id="1:290">
-                Kategori
-              </p>
-              <p className="relative shrink-0 w-[185px]" data-node-id="1:291">
-                Lokasi
-              </p>
-              <p className="relative shrink-0 w-[72px]" data-node-id="1:292">
-                Stok
-              </p>
-              <p className="relative shrink-0 w-[66px]" data-node-id="1:293">
-                Minimum
-              </p>
-              <p className="relative shrink-0 w-[90px]" data-node-id="1:294">
-                Status
-              </p>
-              <p
-                className="flex-[1_0_0] min-w-px relative text-right"
-                data-node-id="1:295"
-              >
-                Aksi
-              </p>
+
+          {/* Inventory table */}
+          <div className="relative flex w-full shrink-0 flex-col items-start rounded-[12px] border border-solid border-[#dce4ee] bg-white drop-shadow-[0px_8px_12px_rgba(18,49,79,0.07)]">
+            <div className="flex h-[42px] w-full shrink-0 items-center gap-[12px] border-b border-solid border-[#dce4ee] bg-[#f8fafc] px-[16px] text-[11px] font-normal uppercase not-italic leading-[normal] text-[#64748b]">
+              <p className="w-[105px] shrink-0">Kode</p>
+              <p className="w-[225px] shrink-0">Nama barang</p>
+              <p className="w-[140px] shrink-0">Kategori</p>
+              <p className="w-[185px] shrink-0">Lokasi</p>
+              <p className="w-[72px] shrink-0">Stok</p>
+              <p className="w-[66px] shrink-0">Minimum</p>
+              <p className="w-[90px] shrink-0">Status</p>
+              <p className="min-w-px flex-[1_0_0] text-right">Aksi</p>
             </div>
-            <div
-              className="content-stretch flex flex-col items-start overflow-clip relative shrink-0 w-full"
-              data-node-id="1:296"
-              data-name="Table body"
-            >
-              <div
-                className="border-[#dce4ee] border-b border-solid content-stretch flex gap-[12px] items-center min-h-[66px] overflow-clip px-[16px] py-[10px] relative shrink-0 w-full"
-                data-node-id="1:297"
-                data-name="Table row"
-              >
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#1769e0] text-[11px] w-[105px]"
-                  data-node-id="1:298"
-                >
-                  MAT-LAN-006
-                </p>
-                <div
-                  className="content-stretch flex gap-[10px] items-center overflow-clip relative shrink-0 w-[225px]"
-                  data-node-id="1:299"
-                  data-name="Item"
-                >
-                  <div
-                    className="bg-[#eaf2ff] content-stretch flex items-center justify-center overflow-clip relative rounded-[6px] shrink-0 size-[34px]"
-                    data-node-id="1:300"
-                    data-name="Item icon"
-                  >
-                    <div
-                      className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[16px] text-[#1769e0] text-[12.8px] text-center"
-                      data-node-id="1:301"
-                    >
-                      <p className="leading-[normal]">◆</p>
-                    </div>
-                  </div>
-                  <p
-                    className="[word-break:break-word] flex-[1_0_0] font-['Inter:Regular'] font-normal leading-[1.35] min-w-px not-italic relative text-[#172b4d] text-[12px]"
-                    data-node-id="1:302"
-                  >
-                    Kabel LAN Cat6 UTP 305m
+
+            <div className="flex w-full shrink-0 flex-col items-start overflow-clip">
+              {tampil.length === 0 && (
+                <div className="flex w-full flex-col items-center gap-[8px] px-[16px] py-[48px] text-center font-normal not-italic">
+                  <p className="text-[14px] text-[#172b4d]">
+                    Tidak ada barang yang cocok
                   </p>
-                </div>
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#64748b] text-[11px] w-[140px]"
-                  data-node-id="1:303"
-                >{`Kabel & aksesori`}</p>
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[1.4] not-italic relative shrink-0 text-[#64748b] text-[11px] w-[185px]"
-                  data-node-id="1:304"
-                >
-                  Gudang Utama · Rak A-01
-                </p>
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#172b4d] text-[12px] w-[72px]"
-                  data-node-id="1:305"
-                >
-                  18 roll
-                </p>
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#64748b] text-[11px] w-[66px]"
-                  data-node-id="1:306"
-                >
-                  8
-                </p>
-                <div
-                  className="content-stretch flex items-start overflow-clip relative shrink-0 w-[90px]"
-                  data-node-id="1:307"
-                  data-name="Stock status"
-                >
-                  <div
-                    className="bg-[#eaf8ef] content-stretch flex gap-[5px] items-center overflow-clip px-[9px] py-[5px] relative rounded-[999px] shrink-0"
-                    data-node-id="1:308"
-                    data-name="Status"
-                  >
-                    <div
-                      className="relative shrink-0 size-[6px]"
-                      data-node-id="1:309"
-                      data-name="Indicator"
-                    >
-                      <img
-                        alt=""
-                        className="absolute block inset-0 max-w-none size-full"
-                        src={imgIndicator}
-                      />
-                    </div>
-                    <p
-                      className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#15803d] text-[12px] whitespace-nowrap"
-                      data-node-id="1:310"
-                    >
-                      Tersedia
-                    </p>
-                  </div>
-                </div>
-                <div
-                  className="content-stretch flex flex-[1_0_0] gap-[5px] items-start justify-end min-w-px overflow-clip relative"
-                  data-node-id="1:311"
-                  data-name="Actions"
-                >
-                  <div
-                    className="border border-[#dce4ee] border-solid content-stretch flex items-center justify-center overflow-clip relative rounded-[6px] shrink-0 size-[30px]"
-                    data-node-id="1:312"
-                    data-name="View"
-                  >
-                    <div
-                      className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[14px] text-[#1769e0] text-[11.2px] text-center"
-                      data-node-id="1:313"
-                    >
-                      <p className="leading-[normal]">◆</p>
-                    </div>
-                  </div>
-                  <div
-                    className="border border-[#dce4ee] border-solid content-stretch flex items-center justify-center overflow-clip relative rounded-[6px] shrink-0 size-[30px]"
-                    data-node-id="1:314"
-                    data-name="Edit"
-                  >
-                    <div
-                      className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[14px] text-[#64748b] text-[11.2px] text-center"
-                      data-node-id="1:315"
-                    >
-                      <p className="leading-[normal]">◆</p>
-                    </div>
-                  </div>
-                  <div
-                    className="border border-[#dce4ee] border-solid content-stretch flex items-center justify-center overflow-clip relative rounded-[6px] shrink-0 size-[30px]"
-                    data-node-id="1:316"
-                    data-name="More"
-                  >
-                    <div
-                      className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[14px] text-[#64748b] text-[11.2px] text-center"
-                      data-node-id="1:317"
-                    >
-                      <p className="leading-[normal]">◆</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div
-                className="border-[#dce4ee] border-b border-solid content-stretch flex gap-[12px] items-center min-h-[66px] overflow-clip px-[16px] py-[10px] relative shrink-0 w-full"
-                data-node-id="1:318"
-                data-name="Table row"
-              >
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#1769e0] text-[11px] w-[105px]"
-                  data-node-id="1:319"
-                >
-                  MAT-RJ45-006
-                </p>
-                <div
-                  className="content-stretch flex gap-[10px] items-center overflow-clip relative shrink-0 w-[225px]"
-                  data-node-id="1:320"
-                  data-name="Item"
-                >
-                  <div
-                    className="bg-[#eaf2ff] content-stretch flex items-center justify-center overflow-clip relative rounded-[6px] shrink-0 size-[34px]"
-                    data-node-id="1:321"
-                    data-name="Item icon"
-                  >
-                    <div
-                      className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[16px] text-[#1769e0] text-[12.8px] text-center"
-                      data-node-id="1:322"
-                    >
-                      <p className="leading-[normal]">◆</p>
-                    </div>
-                  </div>
-                  <p
-                    className="[word-break:break-word] flex-[1_0_0] font-['Inter:Regular'] font-normal leading-[1.35] min-w-px not-italic relative text-[#172b4d] text-[12px]"
-                    data-node-id="1:323"
-                  >
-                    Konektor RJ45 Cat6
+                  <p className="text-[12px] text-[#64748b]">
+                    Coba kata kunci lain atau ubah filter yang dipilih.
                   </p>
-                </div>
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#64748b] text-[11px] w-[140px]"
-                  data-node-id="1:324"
-                >
-                  Material jaringan
-                </p>
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[1.4] not-italic relative shrink-0 text-[#64748b] text-[11px] w-[185px]"
-                  data-node-id="1:325"
-                >
-                  Gudang Utama · Bin A-12
-                </p>
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#c2413a] text-[12px] w-[72px]"
-                  data-node-id="1:326"
-                >
-                  28 pcs
-                </p>
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#64748b] text-[11px] w-[66px]"
-                  data-node-id="1:327"
-                >
-                  50
-                </p>
-                <div
-                  className="content-stretch flex items-start overflow-clip relative shrink-0 w-[90px]"
-                  data-node-id="1:328"
-                  data-name="Stock status"
-                >
-                  <div
-                    className="bg-[#fef0ef] content-stretch flex gap-[5px] items-center overflow-clip px-[9px] py-[5px] relative rounded-[999px] shrink-0"
-                    data-node-id="1:329"
-                    data-name="Status"
+                  <button
+                    type="button"
+                    onClick={reset}
+                    className="mt-[4px] h-[36px] rounded-[8px] border border-solid border-[#dce4ee] bg-white px-[14px] text-[13px] text-[#1769e0] hover:bg-[#f3f6fa]"
                   >
-                    <div
-                      className="relative shrink-0 size-[6px]"
-                      data-node-id="1:330"
-                      data-name="Indicator"
-                    >
-                      <img
-                        alt=""
-                        className="absolute block inset-0 max-w-none size-full"
-                        src={imgIndicator1}
-                      />
-                    </div>
-                    <p
-                      className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#c2413a] text-[12px] whitespace-nowrap"
-                      data-node-id="1:331"
-                    >
-                      Menipis
+                    Reset filter
+                  </button>
+                </div>
+              )}
+
+              {tampil.map((b) => {
+                const Icon = b.icon;
+                return (
+                  <div
+                    key={b.kode}
+                    className="flex min-h-[66px] w-full shrink-0 items-center gap-[12px] overflow-clip border-b border-solid border-[#dce4ee] px-[16px] py-[10px]"
+                  >
+                    <p className="w-[105px] shrink-0 text-[11px] font-normal not-italic leading-[normal] text-[#1769e0]">
+                      {b.kode}
                     </p>
-                  </div>
-                </div>
-                <div
-                  className="content-stretch flex flex-[1_0_0] gap-[5px] items-start justify-end min-w-px overflow-clip relative"
-                  data-node-id="1:332"
-                  data-name="Actions"
-                >
-                  <div
-                    className="border border-[#dce4ee] border-solid content-stretch flex items-center justify-center overflow-clip relative rounded-[6px] shrink-0 size-[30px]"
-                    data-node-id="1:333"
-                    data-name="View"
-                  >
-                    <div
-                      className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[14px] text-[#1769e0] text-[11.2px] text-center"
-                      data-node-id="1:334"
-                    >
-                      <p className="leading-[normal]">◆</p>
+                    <div className="flex w-[225px] shrink-0 items-center gap-[10px] overflow-clip">
+                      <div className="flex size-[34px] shrink-0 items-center justify-center overflow-clip rounded-[6px] bg-[#eaf2ff]">
+                        <div className="flex size-[16px] shrink-0 items-center justify-center text-[#1769e0]">
+                          <Icon size={16} />
+                        </div>
+                      </div>
+                      <p className="min-w-px flex-[1_0_0] text-[12px] font-normal not-italic leading-[1.35] text-[#172b4d]">
+                        {b.nama}
+                      </p>
                     </div>
-                  </div>
-                  <div
-                    className="border border-[#dce4ee] border-solid content-stretch flex items-center justify-center overflow-clip relative rounded-[6px] shrink-0 size-[30px]"
-                    data-node-id="1:335"
-                    data-name="Edit"
-                  >
-                    <div
-                      className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[14px] text-[#64748b] text-[11.2px] text-center"
-                      data-node-id="1:336"
-                    >
-                      <p className="leading-[normal]">◆</p>
-                    </div>
-                  </div>
-                  <div
-                    className="border border-[#dce4ee] border-solid content-stretch flex items-center justify-center overflow-clip relative rounded-[6px] shrink-0 size-[30px]"
-                    data-node-id="1:337"
-                    data-name="More"
-                  >
-                    <div
-                      className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[14px] text-[#64748b] text-[11.2px] text-center"
-                      data-node-id="1:338"
-                    >
-                      <p className="leading-[normal]">◆</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div
-                className="border-[#dce4ee] border-b border-solid content-stretch flex gap-[12px] items-center min-h-[66px] overflow-clip px-[16px] py-[10px] relative shrink-0 w-full"
-                data-node-id="1:339"
-                data-name="Table row"
-              >
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#1769e0] text-[11px] w-[105px]"
-                  data-node-id="1:340"
-                >
-                  NET-RTR-012
-                </p>
-                <div
-                  className="content-stretch flex gap-[10px] items-center overflow-clip relative shrink-0 w-[225px]"
-                  data-node-id="1:341"
-                  data-name="Item"
-                >
-                  <div
-                    className="bg-[#eaf2ff] content-stretch flex items-center justify-center overflow-clip relative rounded-[6px] shrink-0 size-[34px]"
-                    data-node-id="1:342"
-                    data-name="Item icon"
-                  >
-                    <div
-                      className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[16px] text-[#1769e0] text-[12.8px] text-center"
-                      data-node-id="1:343"
-                    >
-                      <p className="leading-[normal]">◆</p>
-                    </div>
-                  </div>
-                  <p
-                    className="[word-break:break-word] flex-[1_0_0] font-['Inter:Regular'] font-normal leading-[1.35] min-w-px not-italic relative text-[#172b4d] text-[12px]"
-                    data-node-id="1:344"
-                  >
-                    Router MikroTik RB4011
-                  </p>
-                </div>
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#64748b] text-[11px] w-[140px]"
-                  data-node-id="1:345"
-                >
-                  Perangkat jaringan
-                </p>
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[1.4] not-italic relative shrink-0 text-[#64748b] text-[11px] w-[185px]"
-                  data-node-id="1:346"
-                >
-                  Gudang Utama · Rak B-01
-                </p>
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#172b4d] text-[12px] w-[72px]"
-                  data-node-id="1:347"
-                >
-                  12 unit
-                </p>
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#64748b] text-[11px] w-[66px]"
-                  data-node-id="1:348"
-                >
-                  5
-                </p>
-                <div
-                  className="content-stretch flex items-start overflow-clip relative shrink-0 w-[90px]"
-                  data-node-id="1:349"
-                  data-name="Stock status"
-                >
-                  <div
-                    className="bg-[#eaf8ef] content-stretch flex gap-[5px] items-center overflow-clip px-[9px] py-[5px] relative rounded-[999px] shrink-0"
-                    data-node-id="1:350"
-                    data-name="Status"
-                  >
-                    <div
-                      className="relative shrink-0 size-[6px]"
-                      data-node-id="1:351"
-                      data-name="Indicator"
-                    >
-                      <img
-                        alt=""
-                        className="absolute block inset-0 max-w-none size-full"
-                        src={imgIndicator}
-                      />
-                    </div>
-                    <p
-                      className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#15803d] text-[12px] whitespace-nowrap"
-                      data-node-id="1:352"
-                    >
-                      Tersedia
+                    <p className="w-[140px] shrink-0 text-[11px] font-normal not-italic leading-[normal] text-[#64748b]">
+                      {b.kategori}
                     </p>
-                  </div>
-                </div>
-                <div
-                  className="content-stretch flex flex-[1_0_0] gap-[5px] items-start justify-end min-w-px overflow-clip relative"
-                  data-node-id="1:353"
-                  data-name="Actions"
-                >
-                  <div
-                    className="border border-[#dce4ee] border-solid content-stretch flex items-center justify-center overflow-clip relative rounded-[6px] shrink-0 size-[30px]"
-                    data-node-id="1:354"
-                    data-name="View"
-                  >
-                    <div
-                      className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[14px] text-[#1769e0] text-[11.2px] text-center"
-                      data-node-id="1:355"
-                    >
-                      <p className="leading-[normal]">◆</p>
-                    </div>
-                  </div>
-                  <div
-                    className="border border-[#dce4ee] border-solid content-stretch flex items-center justify-center overflow-clip relative rounded-[6px] shrink-0 size-[30px]"
-                    data-node-id="1:356"
-                    data-name="Edit"
-                  >
-                    <div
-                      className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[14px] text-[#64748b] text-[11.2px] text-center"
-                      data-node-id="1:357"
-                    >
-                      <p className="leading-[normal]">◆</p>
-                    </div>
-                  </div>
-                  <div
-                    className="border border-[#dce4ee] border-solid content-stretch flex items-center justify-center overflow-clip relative rounded-[6px] shrink-0 size-[30px]"
-                    data-node-id="1:358"
-                    data-name="More"
-                  >
-                    <div
-                      className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[14px] text-[#64748b] text-[11.2px] text-center"
-                      data-node-id="1:359"
-                    >
-                      <p className="leading-[normal]">◆</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div
-                className="border-[#dce4ee] border-b border-solid content-stretch flex gap-[12px] items-center min-h-[66px] overflow-clip px-[16px] py-[10px] relative shrink-0 w-full"
-                data-node-id="1:360"
-                data-name="Table row"
-              >
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#1769e0] text-[11px] w-[105px]"
-                  data-node-id="1:361"
-                >
-                  NET-SWI-024
-                </p>
-                <div
-                  className="content-stretch flex gap-[10px] items-center overflow-clip relative shrink-0 w-[225px]"
-                  data-node-id="1:362"
-                  data-name="Item"
-                >
-                  <div
-                    className="bg-[#eaf2ff] content-stretch flex items-center justify-center overflow-clip relative rounded-[6px] shrink-0 size-[34px]"
-                    data-node-id="1:363"
-                    data-name="Item icon"
-                  >
-                    <div
-                      className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[16px] text-[#1769e0] text-[12.8px] text-center"
-                      data-node-id="1:364"
-                    >
-                      <p className="leading-[normal]">◆</p>
-                    </div>
-                  </div>
-                  <p
-                    className="[word-break:break-word] flex-[1_0_0] font-['Inter:Regular'] font-normal leading-[1.35] min-w-px not-italic relative text-[#172b4d] text-[12px]"
-                    data-node-id="1:365"
-                  >
-                    Switch Managed 24 Port PoE
-                  </p>
-                </div>
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#64748b] text-[11px] w-[140px]"
-                  data-node-id="1:366"
-                >
-                  Perangkat jaringan
-                </p>
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[1.4] not-italic relative shrink-0 text-[#64748b] text-[11px] w-[185px]"
-                  data-node-id="1:367"
-                >
-                  Gudang Utama · Rak B-02
-                </p>
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#172b4d] text-[12px] w-[72px]"
-                  data-node-id="1:368"
-                >
-                  8 unit
-                </p>
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#64748b] text-[11px] w-[66px]"
-                  data-node-id="1:369"
-                >
-                  5
-                </p>
-                <div
-                  className="content-stretch flex items-start overflow-clip relative shrink-0 w-[90px]"
-                  data-node-id="1:370"
-                  data-name="Stock status"
-                >
-                  <div
-                    className="bg-[#eaf8ef] content-stretch flex gap-[5px] items-center overflow-clip px-[9px] py-[5px] relative rounded-[999px] shrink-0"
-                    data-node-id="1:371"
-                    data-name="Status"
-                  >
-                    <div
-                      className="relative shrink-0 size-[6px]"
-                      data-node-id="1:372"
-                      data-name="Indicator"
-                    >
-                      <img
-                        alt=""
-                        className="absolute block inset-0 max-w-none size-full"
-                        src={imgIndicator}
-                      />
-                    </div>
-                    <p
-                      className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#15803d] text-[12px] whitespace-nowrap"
-                      data-node-id="1:373"
-                    >
-                      Tersedia
+                    <p className="w-[185px] shrink-0 text-[11px] font-normal not-italic leading-[1.4] text-[#64748b]">
+                      {b.lokasi}
                     </p>
-                  </div>
-                </div>
-                <div
-                  className="content-stretch flex flex-[1_0_0] gap-[5px] items-start justify-end min-w-px overflow-clip relative"
-                  data-node-id="1:374"
-                  data-name="Actions"
-                >
-                  <div
-                    className="border border-[#dce4ee] border-solid content-stretch flex items-center justify-center overflow-clip relative rounded-[6px] shrink-0 size-[30px]"
-                    data-node-id="1:375"
-                    data-name="View"
-                  >
-                    <div
-                      className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[14px] text-[#1769e0] text-[11.2px] text-center"
-                      data-node-id="1:376"
-                    >
-                      <p className="leading-[normal]">◆</p>
-                    </div>
-                  </div>
-                  <div
-                    className="border border-[#dce4ee] border-solid content-stretch flex items-center justify-center overflow-clip relative rounded-[6px] shrink-0 size-[30px]"
-                    data-node-id="1:377"
-                    data-name="Edit"
-                  >
-                    <div
-                      className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[14px] text-[#64748b] text-[11.2px] text-center"
-                      data-node-id="1:378"
-                    >
-                      <p className="leading-[normal]">◆</p>
-                    </div>
-                  </div>
-                  <div
-                    className="border border-[#dce4ee] border-solid content-stretch flex items-center justify-center overflow-clip relative rounded-[6px] shrink-0 size-[30px]"
-                    data-node-id="1:379"
-                    data-name="More"
-                  >
-                    <div
-                      className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[14px] text-[#64748b] text-[11.2px] text-center"
-                      data-node-id="1:380"
-                    >
-                      <p className="leading-[normal]">◆</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div
-                className="border-[#dce4ee] border-b border-solid content-stretch flex gap-[12px] items-center min-h-[66px] overflow-clip px-[16px] py-[10px] relative shrink-0 w-full"
-                data-node-id="1:381"
-                data-name="Table row"
-              >
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#1769e0] text-[11px] w-[105px]"
-                  data-node-id="1:382"
-                >
-                  NET-AP-018
-                </p>
-                <div
-                  className="content-stretch flex gap-[10px] items-center overflow-clip relative shrink-0 w-[225px]"
-                  data-node-id="1:383"
-                  data-name="Item"
-                >
-                  <div
-                    className="bg-[#eaf2ff] content-stretch flex items-center justify-center overflow-clip relative rounded-[6px] shrink-0 size-[34px]"
-                    data-node-id="1:384"
-                    data-name="Item icon"
-                  >
-                    <div
-                      className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[16px] text-[#1769e0] text-[12.8px] text-center"
-                      data-node-id="1:385"
-                    >
-                      <p className="leading-[normal]">◆</p>
-                    </div>
-                  </div>
-                  <p
-                    className="[word-break:break-word] flex-[1_0_0] font-['Inter:Regular'] font-normal leading-[1.35] min-w-px not-italic relative text-[#172b4d] text-[12px]"
-                    data-node-id="1:386"
-                  >
-                    Access Point Wi-Fi 6
-                  </p>
-                </div>
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#64748b] text-[11px] w-[140px]"
-                  data-node-id="1:387"
-                >
-                  Perangkat jaringan
-                </p>
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[1.4] not-italic relative shrink-0 text-[#64748b] text-[11px] w-[185px]"
-                  data-node-id="1:388"
-                >
-                  Gudang Utama · Rak B-04
-                </p>
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#172b4d] text-[12px] w-[72px]"
-                  data-node-id="1:389"
-                >
-                  14 unit
-                </p>
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#64748b] text-[11px] w-[66px]"
-                  data-node-id="1:390"
-                >
-                  6
-                </p>
-                <div
-                  className="content-stretch flex items-start overflow-clip relative shrink-0 w-[90px]"
-                  data-node-id="1:391"
-                  data-name="Stock status"
-                >
-                  <div
-                    className="bg-[#eaf8ef] content-stretch flex gap-[5px] items-center overflow-clip px-[9px] py-[5px] relative rounded-[999px] shrink-0"
-                    data-node-id="1:392"
-                    data-name="Status"
-                  >
-                    <div
-                      className="relative shrink-0 size-[6px]"
-                      data-node-id="1:393"
-                      data-name="Indicator"
-                    >
-                      <img
-                        alt=""
-                        className="absolute block inset-0 max-w-none size-full"
-                        src={imgIndicator}
-                      />
-                    </div>
                     <p
-                      className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#15803d] text-[12px] whitespace-nowrap"
-                      data-node-id="1:394"
+                      className={`w-[72px] shrink-0 text-[12px] font-normal not-italic leading-[normal] ${
+                        b.menipis ? "text-[#c2413a]" : "text-[#172b4d]"
+                      }`}
                     >
-                      Tersedia
+                      {b.stok}
                     </p>
-                  </div>
-                </div>
-                <div
-                  className="content-stretch flex flex-[1_0_0] gap-[5px] items-start justify-end min-w-px overflow-clip relative"
-                  data-node-id="1:395"
-                  data-name="Actions"
-                >
-                  <div
-                    className="border border-[#dce4ee] border-solid content-stretch flex items-center justify-center overflow-clip relative rounded-[6px] shrink-0 size-[30px]"
-                    data-node-id="1:396"
-                    data-name="View"
-                  >
-                    <div
-                      className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[14px] text-[#1769e0] text-[11.2px] text-center"
-                      data-node-id="1:397"
-                    >
-                      <p className="leading-[normal]">◆</p>
+                    <p className="w-[66px] shrink-0 text-[11px] font-normal not-italic leading-[normal] text-[#64748b]">
+                      {b.minimum}
+                    </p>
+                    <div className="flex w-[90px] shrink-0 items-start overflow-clip">
+                      <StockStatus menipis={b.menipis} />
+                    </div>
+                    <div className="flex min-w-px flex-[1_0_0] items-start justify-end overflow-clip">
+                      <button
+                        type="button"
+                        onClick={() => bukaDetail(b.kode)}
+                        className="flex h-[32px] shrink-0 cursor-pointer items-center justify-center gap-[6px] rounded-[6px] border border-solid border-[#dce4ee] bg-white px-[10px] text-[12px] font-normal not-italic text-[#1769e0] hover:bg-[#eaf2ff]"
+                      >
+                        <Eye size={14} />
+                        Detail
+                      </button>
                     </div>
                   </div>
-                  <div
-                    className="border border-[#dce4ee] border-solid content-stretch flex items-center justify-center overflow-clip relative rounded-[6px] shrink-0 size-[30px]"
-                    data-node-id="1:398"
-                    data-name="Edit"
-                  >
-                    <div
-                      className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[14px] text-[#64748b] text-[11.2px] text-center"
-                      data-node-id="1:399"
-                    >
-                      <p className="leading-[normal]">◆</p>
-                    </div>
-                  </div>
-                  <div
-                    className="border border-[#dce4ee] border-solid content-stretch flex items-center justify-center overflow-clip relative rounded-[6px] shrink-0 size-[30px]"
-                    data-node-id="1:400"
-                    data-name="More"
-                  >
-                    <div
-                      className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[14px] text-[#64748b] text-[11.2px] text-center"
-                      data-node-id="1:401"
-                    >
-                      <p className="leading-[normal]">◆</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
+                );
+              })}
             </div>
-            <div
-              className="content-stretch flex flex-col items-start overflow-clip pb-[14px] px-[16px] relative shrink-0 w-full"
-              data-node-id="1:402"
-              data-name="Table footer"
-            >
-              <div
-                className="content-stretch flex items-center justify-between overflow-clip pt-[14px] relative shrink-0 w-full"
-                data-node-id="1:403"
-                data-name="Pagination"
-              >
-                <p
-                  className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#64748b] text-[12px] whitespace-nowrap"
-                  data-node-id="1:404"
-                >
-                  Menampilkan 1–7 dari 42 barang
+
+            {/* Pagination */}
+            <div className="flex w-full shrink-0 flex-col items-start overflow-clip px-[16px] pb-[14px]">
+              <div className="flex w-full shrink-0 items-center justify-between overflow-clip pt-[14px]">
+                <p className="shrink-0 whitespace-nowrap text-[12px] font-normal not-italic leading-[normal] text-[#64748b]">
+                  {hasil.length === 0
+                    ? "Menampilkan 0 barang"
+                    : `Menampilkan ${mulai + 1}–${mulai + tampil.length} dari ${hasil.length} barang`}
                 </p>
-                <div
-                  className="content-stretch flex gap-[6px] items-start overflow-clip relative shrink-0"
-                  data-node-id="1:405"
-                  data-name="Pages"
-                >
-                  <div
-                    className="border border-[#dce4ee] border-solid content-stretch flex items-center justify-center overflow-clip relative rounded-[6px] shrink-0 size-[32px]"
-                    data-node-id="1:406"
-                    data-name="Page control"
+                <div className="flex shrink-0 items-start gap-[6px] overflow-clip">
+                  <button
+                    type="button"
+                    aria-label="Halaman sebelumnya"
+                    onClick={() => setHalaman(halamanAktif - 1)}
+                    disabled={halamanAktif <= 1}
+                    className="flex size-[32px] shrink-0 items-center justify-center overflow-clip rounded-[6px] border border-solid border-[#dce4ee] text-[#64748b] disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    <div
-                      className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[14px] text-[#64748b] text-[11.2px] text-center"
-                      data-node-id="1:407"
+                    <ChevronLeft size={14} />
+                  </button>
+
+                  {Array.from({ length: totalHalaman }, (_, i) => i + 1).map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setHalaman(n)}
+                      aria-current={n === halamanAktif ? "page" : undefined}
+                      className={`flex size-[32px] shrink-0 items-center justify-center overflow-clip rounded-[6px] ${
+                        n === halamanAktif
+                          ? "bg-[#1769e0]"
+                          : "border border-solid border-[#dce4ee]"
+                      }`}
                     >
-                      <p className="leading-[normal]">›</p>
-                    </div>
-                  </div>
-                  <div
-                    className="bg-[#1769e0] content-stretch flex items-center justify-center overflow-clip relative rounded-[6px] shrink-0 size-[32px]"
-                    data-node-id="1:408"
-                    data-name="Page control"
+                      <span
+                        className={`shrink-0 whitespace-nowrap text-[12px] not-italic leading-[normal] ${
+                          n === halamanAktif
+                            ? "font-bold text-white"
+                            : "font-normal text-[#172b4d]"
+                        }`}
+                      >
+                        {n}
+                      </span>
+                    </button>
+                  ))}
+
+                  <button
+                    type="button"
+                    aria-label="Halaman berikutnya"
+                    onClick={() => setHalaman(halamanAktif + 1)}
+                    disabled={halamanAktif >= totalHalaman}
+                    className="flex size-[32px] shrink-0 items-center justify-center overflow-clip rounded-[6px] border border-solid border-[#dce4ee] text-[#64748b] disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    <p
-                      className="[word-break:break-word] font-['Inter:Bold'] font-bold leading-[normal] not-italic relative shrink-0 text-[12px] text-white whitespace-nowrap"
-                      data-node-id="1:409"
-                    >
-                      1
-                    </p>
-                  </div>
-                  <div
-                    className="border border-[#dce4ee] border-solid content-stretch flex items-center justify-center overflow-clip relative rounded-[6px] shrink-0 size-[32px]"
-                    data-node-id="1:410"
-                    data-name="Page control"
-                  >
-                    <p
-                      className="[word-break:break-word] font-['Inter:Regular'] font-normal leading-[normal] not-italic relative shrink-0 text-[#172b4d] text-[12px] whitespace-nowrap"
-                      data-node-id="1:411"
-                    >
-                      2
-                    </p>
-                  </div>
-                  <div
-                    className="border border-[#dce4ee] border-solid content-stretch flex items-center justify-center overflow-clip relative rounded-[6px] shrink-0 size-[32px]"
-                    data-node-id="1:412"
-                    data-name="Page control"
-                  >
-                    <div
-                      className="[word-break:break-word] flex flex-col font-['Inter:Regular'] font-normal justify-center leading-[0] not-italic relative shrink-0 size-[14px] text-[#64748b] text-[11.2px] text-center"
-                      data-node-id="1:413"
-                    >
-                      <p className="leading-[normal]">›</p>
-                    </div>
-                  </div>
+                    <ChevronRight size={14} />
+                  </button>
                 </div>
               </div>
             </div>
@@ -1172,5 +600,5 @@ export default function MasterBarangScreen() {
         </div>
       </div>
     </div>
-  )
+  );
 }
