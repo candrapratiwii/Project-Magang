@@ -12,7 +12,9 @@ class Barang extends Model
         'nama_barang',
         'kategori_barang_id',
         'satuan',
+        'lokasi',
         'stok',
+        'stok_minimum',
         'deskripsi',
     ];
 
@@ -20,6 +22,7 @@ class Barang extends Model
     {
         return [
             'stok' => 'integer',
+            'stok_minimum' => 'integer',
         ];
     }
 

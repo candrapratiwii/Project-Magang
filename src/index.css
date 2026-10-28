@@ -1,6 +1,5 @@
-@import "tailwindcss";
-@import "tailwindcss";
 @import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap");
+@import "tailwindcss";
 
 @font-face {
   font-family: "Inter:Bold";
@@ -48,14 +47,16 @@
 
 @font-face {
   font-family: "Noto Sans Symbols:Regular";
-  src: url("https://static.figma.com/font/NotoSansSymbols-VF_2") format("woff2");
+  src: url("https://static.figma.com/font/NotoSansSymbols-VF_2")
+    format("woff2");
   font-style: normal;
   font-weight: 400;
 }
 
 @font-face {
   font-family: "Noto Sans:Regular";
-  src: url("https://static.figma.com/font/NotoSans-VF_3") format("woff2");
+  src: url("https://static.figma.com/font/NotoSans-VF_3")
+    format("woff2");
   font-style: normal;
   font-weight: 400;
 }

@@ -2,99 +2,168 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BarangController;
+use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\KategoriBarangController;
+use App\Http\Controllers\Api\MutasiStokController;
+use App\Http\Controllers\Api\StokOpnameController;
+use App\Http\Controllers\Api\UserManagementController;
+use App\Http\Middleware\EnsureUserIsActive;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Api\MutasiStokController;
-use App\Http\Controllers\Api\DashboardController;
-use App\Http\Controllers\Api\UserManagementController;
 
+// Login
 Route::post('/login', [AuthController::class, 'login'])
     ->middleware('throttle:5,1');
 
-    Route::middleware([
-        'auth:sanctum',
-        \App\Http\Middleware\EnsureUserIsActive::class,
-    ])->group(function () {
-    // Autentikasi
+// Semua route di bawah ini membutuhkan autentikasi.
+Route::middleware([
+    'auth:sanctum',
+    EnsureUserIsActive::class,
+])->group(function () {
+
+    // ==========================================
+    // AUTENTIKASI
+    // ==========================================
+
     Route::post('/logout', [AuthController::class, 'logout']);
+
     Route::get('/me', [AuthController::class, 'me']);
 
     Route::get('/user', function (Request $request) {
         return $request->user();
     });
 
-    // Kategori barang: Admin dan Petugas Gudang dapat melihat
-    Route::get('/kategori-barang', [
-        KategoriBarangController::class,
-        'index',
-    ])->middleware('role:admin,petugas_gudang');
 
-    Route::get('/kategori-barang/{kategoriBarang}', [
-        KategoriBarangController::class,
-        'show',
-    ])->middleware('role:admin,petugas_gudang');
+    // ==========================================
+    // KATEGORI BARANG
+    // Admin dan Petugas Gudang: melihat
+    // Admin: mengelola
+    // ==========================================
 
-    // Pengelolaan kategori: khusus Admin
-    Route::post('/kategori-barang', [
-        KategoriBarangController::class,
-        'store',
-    ])->middleware('role:admin');
+    Route::middleware('role:admin,petugas_gudang')
+        ->group(function () {
+            Route::get('/kategori-barang', [
+                KategoriBarangController::class,
+                'index',
+            ]);
 
-    Route::put('/kategori-barang/{kategoriBarang}', [
-        KategoriBarangController::class,
-        'update',
-    ])->middleware('role:admin');
+            Route::get('/kategori-barang/{kategoriBarang}', [
+                KategoriBarangController::class,
+                'show',
+            ]);
+        });
 
-    Route::delete('/kategori-barang/{kategoriBarang}', [
-        KategoriBarangController::class,
-        'destroy',
-    ])->middleware('role:admin');
+    Route::middleware('role:admin')->group(function () {
+        Route::post('/kategori-barang', [
+            KategoriBarangController::class,
+            'store',
+        ]);
 
-    // Barang: Admin dan Petugas Gudang dapat melihat
-    Route::get('/barang', [
-        BarangController::class,
-        'index',
-    ])->middleware('role:admin,petugas_gudang');
+        Route::put('/kategori-barang/{kategoriBarang}', [
+            KategoriBarangController::class,
+            'update',
+        ]);
 
-    Route::get('/barang/{barang}', [
-        BarangController::class,
-        'show',
-    ])->middleware('role:admin,petugas_gudang');
+        Route::delete('/kategori-barang/{kategoriBarang}', [
+            KategoriBarangController::class,
+            'destroy',
+        ]);
+    });
 
-    // Pengelolaan data barang: khusus Admin
-    Route::post('/barang', [
-        BarangController::class,
-        'store',
-    ])->middleware('role:admin');
 
-    Route::put('/barang/{barang}', [
-        BarangController::class,
-        'update',
-    ])->middleware('role:admin');
+    // ==========================================
+    // BARANG
+    // Admin dan Petugas Gudang: melihat
+    // Admin: mengelola
+    // ==========================================
 
-    Route::delete('/barang/{barang}', [
-        BarangController::class,
-        'destroy',
-    ])->middleware('role:admin');
-    
-    // Mutasi stok: Admin dan Petugas Gudang
-    Route::get('/mutasi-stok', [
-        MutasiStokController::class,
-        'index',
-    ])->middleware('role:admin,petugas_gudang');
+    Route::middleware('role:admin,petugas_gudang')
+        ->group(function () {
+            Route::get('/barang', [
+                BarangController::class,
+                'index',
+            ]);
 
-    Route::post('/mutasi-stok', [
-        MutasiStokController::class,
-        'store',
-    ])->middleware('role:admin,petugas_gudang');
-    // Dashboard: Admin dan Petugas Gudang dapat melihat
+            Route::get('/barang/{barang}', [
+                BarangController::class,
+                'show',
+            ]);
+        });
+
+    Route::middleware('role:admin')->group(function () {
+        Route::post('/barang', [
+            BarangController::class,
+            'store',
+        ]);
+
+        Route::put('/barang/{barang}', [
+            BarangController::class,
+            'update',
+        ]);
+
+        Route::delete('/barang/{barang}', [
+            BarangController::class,
+            'destroy',
+        ]);
+    });
+
+
+    // ==========================================
+    // MUTASI STOK
+    // Admin dan Petugas Gudang
+    // ==========================================
+
+    Route::middleware('role:admin,petugas_gudang')
+        ->group(function () {
+            Route::get('/mutasi-stok', [
+                MutasiStokController::class,
+                'index',
+            ]);
+
+            Route::post('/mutasi-stok', [
+                MutasiStokController::class,
+                'store',
+            ]);
+        });
+
+
+    // ==========================================
+    // STOK OPNAME
+    // Admin dan Petugas Gudang
+    // ==========================================
+
+    Route::middleware('role:admin,petugas_gudang')
+        ->group(function () {
+            // Menyelesaikan opname dan menyimpan riwayat.
+            Route::post('/stok-opname/selesaikan', [
+                StokOpnameController::class,
+                'selesaikan',
+            ]);
+
+            // Mengambil riwayat opname dari database.
+            Route::get('/stok-opname/riwayat', [
+                StokOpnameController::class,
+                'riwayat',
+            ]);
+        });
+
+
+    // ==========================================
+    // DASHBOARD
+    // Admin dan Petugas Gudang
+    // ==========================================
+
     Route::get('/dashboard', [
         DashboardController::class,
         'index',
     ])->middleware('role:admin,petugas_gudang');
-    
-    // Manajemen pengguna: khusus Admin
+
+
+    // ==========================================
+    // MANAJEMEN PENGGUNA
+    // Khusus Admin
+    // ==========================================
+
     Route::middleware('role:admin')->group(function () {
         Route::get('/users', [
             UserManagementController::class,
