@@ -73,8 +73,8 @@ Route::middleware([
 
     // ==========================================
     // BARANG
-    // Admin dan Petugas Gudang: melihat
-    // Admin: mengelola
+    // Admin dan Petugas Gudang: melihat barang aktif
+    // Admin: mengelola dan memulihkan barang
     // ==========================================
 
     Route::middleware('role:admin,petugas_gudang')
@@ -101,9 +101,16 @@ Route::middleware([
             'update',
         ]);
 
+        // Arsipkan barang tanpa menghapus permanen.
         Route::delete('/barang/{barang}', [
             BarangController::class,
             'destroy',
+        ]);
+
+        // Aktifkan kembali barang yang diarsipkan.
+        Route::patch('/barang/{barang}/restore', [
+            BarangController::class,
+            'restore',
         ]);
     });
 

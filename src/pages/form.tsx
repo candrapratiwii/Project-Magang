@@ -11,17 +11,6 @@ import Sidebar from "../Components/Sidebar";
 import { useAuth } from "../auth";
 import { apiRequest } from "../api";
 
-/* ====================================================================
- * KONTRAK API
- *
- * GET  /kategori-barang -> daftar kategori
- * GET  /barang          -> daftar barang
- * POST /barang          -> tambah barang
- * PUT  /barang/{id}     -> edit barang berdasarkan ID database
- *
- * Lokasi tetap: "Tempat Penyimpanan"
- * ==================================================================== */
-
 const BACKEND_DUKUNG_MEREK_MODEL = false;
 const LOKASI_TETAP = "Tempat Penyimpanan";
 
@@ -111,8 +100,6 @@ function bacaErrorApi(
   return { pesan, fields };
 }
 
-/* ------------------------------ Data ------------------------------ */
-
 interface Kategori {
   id: string;
   nama: string;
@@ -151,8 +138,6 @@ function bacaKodeTerpilih(): string | null {
 function kembali() {
   window.history.back();
 }
-
-/* --------------------------- Komponen kecil --------------------------- */
 
 function Field({
   label,
@@ -319,12 +304,12 @@ function Row({ children }: { children: ReactNode }) {
 }
 
 type StatusMuat = "memuat" | "siap" | "gagal";
-/* ------------------------------ Halaman ------------------------------ */
 
 export default function FormTambahEditBarangScreen() {
   const { user } = useAuth();
+  const isAdmin =
+    String(user?.role ?? "").toLowerCase() === "admin";
 
-  /* Mode edit jika halaman sebelumnya memilih sebuah barang */
   const [kodeTerpilih] = useState(bacaKodeTerpilih);
   const modeEdit = kodeTerpilih !== null;
 
@@ -339,6 +324,12 @@ export default function FormTambahEditBarangScreen() {
   const [percobaanKategori, setPercobaanKategori] = useState(0);
 
   const [kategoriId, setKategoriId] = useState("");
+  const [tambahKategoriBaru, setTambahKategoriBaru] = useState(false);
+  const [namaKategoriBaru, setNamaKategoriBaru] = useState("");
+  const [deskripsiKategoriBaru, setDeskripsiKategoriBaru] =
+    useState("");
+  const [errorKategoriBaru, setErrorKategoriBaru] = useState("");
+
   const [kode, setKode] = useState("");
   const [nama, setNama] = useState("");
   const [satuan, setSatuan] = useState("Unit");
@@ -360,10 +351,8 @@ export default function FormTambahEditBarangScreen() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  /* ---- Kategori dari API ---- */
   useEffect(() => {
     let batal = false;
-
     setStatusKategori("memuat");
 
     panggil<unknown>("/kategori-barang")
@@ -395,7 +384,6 @@ export default function FormTambahEditBarangScreen() {
     };
   }, [percobaanKategori, modeEdit]);
 
-  /* ---- Data barang untuk mode edit ---- */
   useEffect(() => {
     if (kodeTerpilih === null) return;
 
@@ -454,7 +442,6 @@ export default function FormTambahEditBarangScreen() {
     };
   }, [kodeTerpilih]);
 
-  /* Setiap perubahan menandai data sebagai berubah */
   const ubah =
     (setter: (v: string) => void, field?: keyof Errors) =>
     (v: string) => {
@@ -472,7 +459,6 @@ export default function FormTambahEditBarangScreen() {
     setErrors((e) => ({ ...e, kode: undefined }));
   };
 
-  /* Progress langkah */
   const langkah1Lengkap =
     kode.trim() !== "" && nama.trim() !== "";
 
@@ -516,12 +502,24 @@ export default function FormTambahEditBarangScreen() {
       e.nama = "Nama barang wajib diisi.";
     }
 
-    if (!kategoriId) {
+    if (
+      !kategoriId &&
+      !(tambahKategoriBaru && isAdmin && !modeEdit)
+    ) {
       e.kategori = "Pilih kategori barang.";
     }
 
-    /* Stok hanya diisi saat tambah barang.
-       Saat edit, stok dikelola lewat transaksi. */
+    if (
+      tambahKategoriBaru &&
+      isAdmin &&
+      !modeEdit &&
+      !namaKategoriBaru.trim()
+    ) {
+      setErrorKategoriBaru("Nama kategori wajib diisi.");
+      setToast("Isi nama kategori terlebih dahulu.");
+      return;
+    }
+
     if (
       !modeEdit &&
       (stok === "" || !Number.isInteger(stokNum) || stokNum < 0)
@@ -553,11 +551,73 @@ export default function FormTambahEditBarangScreen() {
       return;
     }
 
-    const idKategori = Number.isNaN(Number(kategoriId))
-      ? kategoriId
-      : Number(kategoriId);
+    let kategoriDipilih: string | number = kategoriId;
 
-    /* Merek/model dikirim hanya setelah backend mendukungnya */
+    if (tambahKategoriBaru && isAdmin && !modeEdit) {
+      setMenyimpan(true);
+
+      try {
+        const rawKategori = await panggil<unknown>(
+          "/kategori-barang",
+          "POST",
+          {
+            nama_kategori: namaKategoriBaru.trim(),
+            deskripsi: deskripsiKategoriBaru.trim() || null,
+          },
+        );
+
+        const dataKategori = bukaData<unknown>(rawKategori);
+
+        const kategoriTersimpan =
+          dataKategori &&
+          typeof dataKategori === "object" &&
+          "id" in dataKategori
+            ? (dataKategori as Record<string, unknown>)
+            : null;
+
+        if (!kategoriTersimpan?.id) {
+          throw new Error(
+            "Respons kategori tidak memuat ID. Periksa daftar kategori sebelum mencoba lagi.",
+          );
+        }
+
+        const kategoriBaru: Kategori = {
+          id: String(kategoriTersimpan.id),
+          nama:
+            ambil(kategoriTersimpan, "nama_kategori", "nama") ||
+            namaKategoriBaru.trim(),
+        };
+
+        setDaftarKategori((daftar) => [...daftar, kategoriBaru]);
+        kategoriDipilih = kategoriBaru.id;
+        setKategoriId(kategoriBaru.id);
+        setTambahKategoriBaru(false);
+        setNamaKategoriBaru("");
+        setDeskripsiKategoriBaru("");
+        setErrorKategoriBaru("");
+      } catch (err) {
+        const pesan =
+          err instanceof Error
+            ? err.message
+            : "Kategori gagal disimpan.";
+
+        setErrorKategoriBaru(pesan);
+        setToast(pesan);
+        setMenyimpan(false);
+        return;
+      }
+    }
+
+    if (!kategoriDipilih) {
+      setMenyimpan(false);
+      setToast("Pilih kategori barang terlebih dahulu.");
+      return;
+    }
+
+    const idKategori = Number.isNaN(Number(kategoriDipilih))
+      ? kategoriDipilih
+      : Number(kategoriDipilih);
+
     const tambahan = BACKEND_DUKUNG_MEREK_MODEL
       ? { merek: merek.trim(), model: model.trim() }
       : {};
@@ -577,7 +637,6 @@ export default function FormTambahEditBarangScreen() {
 
     try {
       if (modeEdit) {
-        /* Stok tidak diubah melalui form edit */
         await panggil(
           `/barang/${encodeURIComponent(barangId as string)}`,
           "PUT",
@@ -603,7 +662,7 @@ export default function FormTambahEditBarangScreen() {
     try {
       sessionStorage.setItem(KEY_TERPILIH, kodeBersih);
     } catch {
-      /* Abaikan jika sessionStorage tidak tersedia */
+      // Abaikan jika sessionStorage tidak tersedia.
     }
 
     const adaMerekModel =
@@ -629,10 +688,20 @@ export default function FormTambahEditBarangScreen() {
     kembali();
   };
 
-  const opsiKategori: Opsi[] = daftarKategori.map((k) => ({
-    value: k.id,
-    label: k.nama,
-  }));
+  const opsiKategori: Opsi[] = [
+    ...daftarKategori.map((k) => ({
+      value: k.id,
+      label: k.nama,
+    })),
+    ...(isAdmin && !modeEdit
+      ? [
+          {
+            value: "__tambah_kategori_baru__",
+            label: "+ Tambah kategori baru",
+          },
+        ]
+      : []),
+  ];
 
   const hintMerekModel = BACKEND_DUKUNG_MEREK_MODEL
     ? "Opsional."
@@ -643,7 +712,6 @@ export default function FormTambahEditBarangScreen() {
       <Sidebar active="Master Barang" />
 
       <div className="relative flex min-h-[1040px] min-w-px flex-[1_0_0] flex-col items-start overflow-clip">
-        {/* Top bar */}
         <div className="flex h-[76px] w-full shrink-0 items-center justify-between overflow-clip whitespace-nowrap border-b border-solid border-[#dce4ee] bg-white px-[32px] not-italic leading-[normal]">
           <p className="shrink-0 text-[16px] font-bold text-[#172b4d]">
             Sistem Persediaan Infrastruktur TIK
@@ -654,9 +722,7 @@ export default function FormTambahEditBarangScreen() {
           </p>
         </div>
 
-        {/* Page content */}
         <div className="flex w-full shrink-0 flex-col items-start gap-[24px] overflow-clip p-[32px]">
-          {/* Page heading */}
           <div className="flex w-full shrink-0 items-center justify-between overflow-clip font-normal not-italic">
             <div className="flex min-w-px flex-[1_0_0] flex-col items-start gap-[5px] overflow-clip leading-[normal]">
               <p className="w-full shrink-0 text-[26px] text-[#172b4d]">
@@ -664,8 +730,7 @@ export default function FormTambahEditBarangScreen() {
               </p>
 
               <p className="w-full shrink-0 text-[14px] text-[#64748b]">
-                Lengkapi atau perbarui data master barang. Kolom
-                bertanda * wajib diisi.
+                Lengkapi atau perbarui data master barang. Kolom bertanda * wajib diisi.
               </p>
             </div>
 
@@ -680,6 +745,7 @@ export default function FormTambahEditBarangScreen() {
               </span>
             </button>
           </div>
+
           {modeEdit && statusBarang !== "siap" ? (
             <Card>
               <p className="text-[14px] font-normal not-italic text-[#172b4d]">
@@ -690,15 +756,12 @@ export default function FormTambahEditBarangScreen() {
 
               {statusBarang === "gagal" && (
                 <p className="text-[12px] font-normal not-italic text-[#64748b]">
-                  Barang mungkin sudah dihapus atau server tidak dapat
-                  dihubungi. Kembali ke Master Barang untuk memilih
-                  barang lain.
+                  Barang mungkin sudah dihapus atau server tidak dapat dihubungi. Kembali ke Master Barang untuk memilih barang lain.
                 </p>
               )}
             </Card>
           ) : (
             <>
-              {/* Form progress */}
               <div className="flex w-full shrink-0 items-center justify-between overflow-clip rounded-[8px] border border-solid border-[#dce4ee] bg-white p-[14px]">
                 {langkah.map((l) => (
                   <div
@@ -714,9 +777,7 @@ export default function FormTambahEditBarangScreen() {
                     >
                       <p
                         className={`shrink-0 whitespace-nowrap text-[11px] font-normal not-italic leading-[normal] ${
-                          l.aktif
-                            ? "text-white"
-                            : "text-[#64748b]"
+                          l.aktif ? "text-white" : "text-[#64748b]"
                         }`}
                       >
                         {l.no}
@@ -736,9 +797,7 @@ export default function FormTambahEditBarangScreen() {
                     {l.garis !== undefined && (
                       <div
                         className={`h-[2px] w-[220px] shrink-0 ${
-                          l.garis
-                            ? "bg-[#1769e0]"
-                            : "bg-[#dce4ee]"
+                          l.garis ? "bg-[#1769e0]" : "bg-[#dce4ee]"
                         }`}
                       />
                     )}
@@ -746,9 +805,7 @@ export default function FormTambahEditBarangScreen() {
                 ))}
               </div>
 
-              {/* Form columns */}
               <div className="flex w-full shrink-0 items-start gap-[16px]">
-                {/* Primary form */}
                 <div className="flex min-w-px flex-[1_0_0] flex-col items-start gap-[16px]">
                   <Card>
                     <SectionHeading
@@ -795,8 +852,35 @@ export default function FormTambahEditBarangScreen() {
                         }
                       >
                         <SelectInput
-                          value={kategoriId}
-                          onChange={ubah(setKategoriId, "kategori")}
+                          value={
+                            tambahKategoriBaru
+                              ? "__tambah_kategori_baru__"
+                              : kategoriId
+                          }
+                          onChange={(value) => {
+                            if (value === "__tambah_kategori_baru__") {
+                              if (!isAdmin || modeEdit) return;
+
+                              setTambahKategoriBaru(true);
+                              setNamaKategoriBaru("");
+                              setDeskripsiKategoriBaru("");
+                              setErrorKategoriBaru("");
+                              setDirty(true);
+                              setErrors((cur) => ({
+                                ...cur,
+                                kategori: undefined,
+                              }));
+                              return;
+                            }
+
+                            setTambahKategoriBaru(false);
+                            setKategoriId(value);
+                            setDirty(true);
+                            setErrors((cur) => ({
+                              ...cur,
+                              kategori: undefined,
+                            }));
+                          }}
                           options={opsiKategori}
                           placeholder={
                             statusKategori === "memuat"
@@ -806,6 +890,64 @@ export default function FormTambahEditBarangScreen() {
                           disabled={statusKategori !== "siap"}
                           error={errors.kategori}
                         />
+
+                        {tambahKategoriBaru && isAdmin && !modeEdit && (
+                          <div className="mt-3 flex w-full flex-col gap-3 rounded-lg border border-[#dce4ee] bg-[#f8fafc] p-3">
+                            <p className="text-[12px] font-semibold text-[#172b4d]">
+                              Tambah kategori baru
+                            </p>
+
+                            <div className="flex flex-col gap-1">
+                              <label className="text-[12px] text-[#172b4d]">
+                                Nama kategori *
+                              </label>
+                              <input
+                                value={namaKategoriBaru}
+                                onChange={(e) => {
+                                  setNamaKategoriBaru(e.target.value);
+                                  setErrorKategoriBaru("");
+                                  setDirty(true);
+                                }}
+                                placeholder="Contoh: Perangkat Keamanan"
+                                className="h-[42px] w-full rounded-lg border border-[#dce4ee] bg-white px-3 text-sm text-[#172b4d] outline-none focus:border-[#1769e0]"
+                              />
+                            </div>
+
+                            <div className="flex flex-col gap-1">
+                              <label className="text-[12px] text-[#172b4d]">
+                                Deskripsi (opsional)
+                              </label>
+                              <textarea
+                                value={deskripsiKategoriBaru}
+                                onChange={(e) => {
+                                  setDeskripsiKategoriBaru(e.target.value);
+                                  setDirty(true);
+                                }}
+                                placeholder="Keterangan kategori"
+                                className="min-h-[72px] w-full resize-y rounded-lg border border-[#dce4ee] bg-white p-3 text-sm text-[#172b4d] outline-none focus:border-[#1769e0]"
+                              />
+                            </div>
+
+                            {errorKategoriBaru && (
+                              <p className="text-[11px] text-[#c2413a]">
+                                {errorKategoriBaru}
+                              </p>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTambahKategoriBaru(false);
+                                setNamaKategoriBaru("");
+                                setDeskripsiKategoriBaru("");
+                                setErrorKategoriBaru("");
+                              }}
+                              className="self-start text-[12px] text-[#64748b] hover:underline"
+                            >
+                              Batal tambah kategori
+                            </button>
+                          </div>
+                        )}
 
                         {statusKategori === "gagal" && (
                           <button
@@ -923,7 +1065,6 @@ export default function FormTambahEditBarangScreen() {
                   </Card>
                 </div>
 
-                {/* Form guidance */}
                 <div className="relative flex w-[300px] shrink-0 flex-col items-start gap-[16px]">
                   <div className="flex w-full shrink-0 flex-col items-start gap-[12px] overflow-clip rounded-[12px] bg-[#eaf2ff] p-[18px] font-normal not-italic">
                     <div className="flex shrink-0 items-center gap-[8px] overflow-clip">
@@ -954,7 +1095,6 @@ export default function FormTambahEditBarangScreen() {
                 </div>
               </div>
 
-              {/* Form actions */}
               <div className="flex w-full shrink-0 items-center justify-between overflow-clip pt-[4px]">
                 <p className="shrink-0 whitespace-nowrap text-[11px] font-normal not-italic leading-[normal] text-[#64748b]">
                   {dirty
@@ -996,7 +1136,6 @@ export default function FormTambahEditBarangScreen() {
         </div>
       </div>
 
-      {/* Notifikasi */}
       {toast && (
         <div
           role="status"

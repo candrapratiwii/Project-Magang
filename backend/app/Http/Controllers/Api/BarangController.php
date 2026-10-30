@@ -13,15 +13,35 @@ use Illuminate\Validation\Rule;
 class BarangController extends Controller
 {
     /**
-     * Menampilkan daftar barang beserta kategori.
+     * Menampilkan daftar barang dengan filter status.
+     * Admin dapat melihat aktif, arsip, dan semua.
+     * Petugas Gudang hanya dapat melihat barang aktif.
      */
     public function index(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'search' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'status' => ['sometimes', 'nullable', Rule::in(['aktif', 'arsip', 'semua'])],
         ]);
 
+        $status = $validated['status'] ?? 'aktif';
+
+        if (
+            $request->user()->role !== 'admin'
+            && $status !== 'aktif'
+        ) {
+            return response()->json([
+                'message' => 'Anda tidak memiliki akses untuk melihat barang yang diarsipkan.',
+            ], 403);
+        }
+
         $query = Barang::with('kategoriBarang');
+
+        if ($status === 'aktif') {
+            $query->where('aktif', true);
+        } elseif ($status === 'arsip') {
+            $query->where('aktif', false);
+        }
 
         if (!empty($validated['search'])) {
             $search = $validated['search'];
@@ -42,10 +62,6 @@ class BarangController extends Controller
 
     /**
      * Menambahkan barang dan mencatat stok awal.
-     *
-     * Stok awal disimpan pada barang.
-     * Mutasi awal dicatat sebagai riwayat, tanpa menambah stok
-     * untuk kedua kalinya.
      */
     public function store(Request $request): JsonResponse
     {
@@ -56,56 +72,29 @@ class BarangController extends Controller
                 'max:255',
                 'unique:barangs,kode_barang',
             ],
-            'nama_barang' => [
-                'required',
-                'string',
-                'max:255',
-            ],
+            'nama_barang' => ['required', 'string', 'max:255'],
             'kategori_barang_id' => [
                 'required',
                 'integer',
                 'exists:kategori_barangs,id',
             ],
-            'satuan' => [
-                'required',
-                'string',
-                'max:50',
-            ],
-            'lokasi' => [
-                'required',
-                'string',
-                'max:255',
-            ],
-            'stok' => [
-                'required',
-                'integer',
-                'min:0',
-            ],
-            'stok_minimum' => [
-                'required',
-                'integer',
-                'min:0',
-            ],
-            'deskripsi' => [
-                'nullable',
-                'string',
-            ],
+            'satuan' => ['required', 'string', 'max:50'],
+            'lokasi' => ['required', 'string', 'max:255'],
+            'stok' => ['required', 'integer', 'min:0'],
+            'stok_minimum' => ['required', 'integer', 'min:0'],
+            'deskripsi' => ['nullable', 'string'],
         ]);
 
         $user = $request->user();
 
-        $barang = DB::transaction(function () use (
-            $validated,
-            $user
-        ) {
+        $barang = DB::transaction(function () use ($validated, $user) {
             $stokAwal = (int) $validated['stok'];
 
-            // Buat barang dengan saldo stok awal.
-            $barang = Barang::create($validated);
+            $barang = Barang::create([
+                ...$validated,
+                'aktif' => true,
+            ]);
 
-            // Catat saldo awal sebagai mutasi masuk.
-            // Jangan menambah saldo barang lagi di sini,
-            // karena stok sudah diisi saat barang dibuat.
             if ($stokAwal > 0) {
                 MutasiStok::create([
                     'barang_id' => $barang->id,
@@ -144,55 +133,38 @@ class BarangController extends Controller
 
     /**
      * Memperbarui data master barang.
-     * Perubahan stok harus melalui transaksi stok.
+     * Barang arsip tidak dapat diedit.
      */
     public function update(
         Request $request,
         Barang $barang
     ): JsonResponse {
+        if (!$barang->aktif) {
+            return response()->json([
+                'message' => 'Barang diarsipkan. Aktifkan kembali sebelum mengedit.',
+            ], 422);
+        }
+
         $validated = $request->validate([
             'kode_barang' => [
                 'required',
                 'string',
                 'max:255',
-                Rule::unique('barangs', 'kode_barang')
-                    ->ignore($barang->id),
+                Rule::unique('barangs', 'kode_barang')->ignore($barang->id),
             ],
-            'nama_barang' => [
-                'required',
-                'string',
-                'max:255',
-            ],
+            'nama_barang' => ['required', 'string', 'max:255'],
             'kategori_barang_id' => [
                 'required',
                 'integer',
                 'exists:kategori_barangs,id',
             ],
-            'satuan' => [
-                'required',
-                'string',
-                'max:50',
-            ],
-            'lokasi' => [
-                'required',
-                'string',
-                'max:255',
-            ],
-            'stok_minimum' => [
-                'required',
-                'integer',
-                'min:0',
-            ],
-            'deskripsi' => [
-                'nullable',
-                'string',
-            ],
+            'satuan' => ['required', 'string', 'max:50'],
+            'lokasi' => ['required', 'string', 'max:255'],
+            'stok_minimum' => ['required', 'integer', 'min:0'],
+            'deskripsi' => ['nullable', 'string'],
         ]);
 
-        DB::transaction(function () use ($barang, $validated) {
-            $barang->update($validated);
-        });
-
+        $barang->update($validated);
         $barang->refresh();
         $barang->load('kategoriBarang');
 
@@ -203,14 +175,43 @@ class BarangController extends Controller
     }
 
     /**
-     * Menghapus barang.
+     * Mengarsipkan barang tanpa menghapus riwayat transaksi.
      */
     public function destroy(Barang $barang): JsonResponse
     {
-        $barang->delete();
+        if (!$barang->aktif) {
+            return response()->json([
+                'message' => 'Barang sudah diarsipkan.',
+            ], 422);
+        }
+
+        $barang->aktif = false;
+        $barang->save();
 
         return response()->json([
-            'message' => 'Barang berhasil dihapus.',
+            'message' => 'Barang berhasil diarsipkan.',
+            'data' => $barang,
+        ]);
+    }
+
+    /**
+     * Mengaktifkan kembali barang yang diarsipkan.
+     */
+    public function restore(Barang $barang): JsonResponse
+    {
+        if ($barang->aktif) {
+            return response()->json([
+                'message' => 'Barang sudah dalam status aktif.',
+            ], 422);
+        }
+
+        $barang->aktif = true;
+        $barang->save();
+        $barang->load('kategoriBarang');
+
+        return response()->json([
+            'message' => 'Barang berhasil diaktifkan kembali.',
+            'data' => $barang,
         ]);
     }
 }

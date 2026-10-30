@@ -1,5 +1,4 @@
-
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useAuth } from "../auth";
 import { apiRequest } from "../api";
 import {
@@ -10,6 +9,9 @@ import {
   PieChart,
   TriangleAlert,
   CircleAlert,
+  CircleCheck,
+  Search,
+  RefreshCw,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -62,6 +64,31 @@ type DashboardResponse = {
   };
 };
 
+type ApiBarang = {
+  id: number;
+  kode_barang: string;
+  nama_barang: string;
+  stok: number;
+  stok_minimum: number;
+  satuan: string;
+  lokasi?: string | null;
+  kategori_barang?: {
+    nama_kategori: string;
+  } | null;
+};
+
+type BarangMenipis = {
+  id: number;
+  kode: string;
+  nama: string;
+  stok: number;
+  minimum: number;
+  satuan: string;
+  lokasi: string;
+  kategori: string;
+  kekurangan: number;
+};
+
 interface Metric {
   label: string;
   value: string;
@@ -88,18 +115,18 @@ function formatAngka(value: number) {
 function formatWaktu(value: string) {
   const tanggal = new Date(value);
 
-  if (Number.isNaN(tanggal.getTime())) {
-    return value;
-  }
+  if (Number.isNaN(tanggal.getTime())) return value;
 
-  return tanggal.toLocaleString("id-ID", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "Asia/Makassar",
-  }) + " WITA";
+  return (
+    tanggal.toLocaleString("id-ID", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "Asia/Makassar",
+    }) + " WITA"
+  );
 }
 
 function MetricCard({ m }: { m: Metric }) {
@@ -111,7 +138,6 @@ function MetricCard({ m }: { m: Metric }) {
         <p className="min-w-0 flex-1 text-[12px] text-[#64748b]">
           {m.label}
         </p>
-
         <div
           className="flex size-[34px] shrink-0 items-center justify-center rounded-[8px]"
           style={{ backgroundColor: m.iconBg }}
@@ -119,11 +145,9 @@ function MetricCard({ m }: { m: Metric }) {
           <Icon size={17} style={{ color: m.iconColor }} />
         </div>
       </div>
-
       <p className="w-full break-words text-[30px] text-[#172b4d]">
         {m.value}
       </p>
-
       <p className="w-full text-[11px] text-[#64748b]">{m.note}</p>
     </div>
   );
@@ -140,12 +164,10 @@ function AktivitasItem({ a }: { a: Aktivitas }) {
       >
         <Icon size={16} style={{ color: a.color }} />
       </div>
-
       <div className="min-w-0 flex-1">
         <p className="text-[12px] font-bold text-[#172b4d]">{a.judul}</p>
         <p className="mt-1 text-[11px] text-[#64748b]">{a.detail}</p>
       </div>
-
       <p className="max-w-[120px] shrink-0 text-right text-[10px] text-[#94a3b8]">
         {a.waktu}
       </p>
@@ -157,10 +179,12 @@ function Modal({
   title,
   onClose,
   children,
+  lebar = "max-w-[520px]",
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  lebar?: string;
 }) {
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -173,30 +197,75 @@ function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[#172b4d]/40 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-[#172b4d]/40 p-4"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-label={title}
     >
       <div
-        className="max-h-[85vh] w-full max-w-[520px] overflow-auto rounded-[12px] bg-white p-[24px] shadow-xl"
+        className={`my-auto max-h-[85vh] w-full ${lebar} overflow-auto rounded-[12px] bg-white p-5 shadow-xl sm:p-[24px]`}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-[16px] flex items-center justify-between gap-3">
           <p className="text-[18px] text-[#172b4d]">{title}</p>
-
           <button
             type="button"
             onClick={onClose}
             aria-label="Tutup"
-            className="flex size-[28px] items-center justify-center rounded-[6px] hover:bg-[#f3f6fa]"
+            className="flex size-[28px] shrink-0 items-center justify-center rounded-[6px] hover:bg-[#f3f6fa]"
           >
             <X size={18} className="text-[#64748b]" />
           </button>
         </div>
-
         {children}
+      </div>
+    </div>
+  );
+}
+
+function BarangMenipisItem({ barang }: { barang: BarangMenipis }) {
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-[#dce4ee] p-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-start gap-3">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#fef0ef]">
+          <TriangleAlert size={17} className="text-[#c2413a]" />
+        </div>
+        <div className="min-w-0">
+          <p className="break-words text-sm font-semibold text-[#172b4d]">
+            {barang.nama}
+          </p>
+          <p className="mt-1 break-words text-xs text-[#64748b]">
+            {barang.kode}
+            {barang.kategori ? ` · ${barang.kategori}` : ""}
+          </p>
+          {barang.lokasi && (
+            <p className="mt-1 text-xs text-[#64748b]">
+              Lokasi: {barang.lokasi}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3 border-t border-[#eef2f7] pt-3 sm:min-w-[190px] sm:border-l sm:border-t-0 sm:pl-3 sm:pt-0">
+        <div>
+          <p className="text-[10px] text-[#64748b]">Stok</p>
+          <p className="mt-1 text-sm font-semibold text-[#c2413a]">
+            {formatAngka(barang.stok)}
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] text-[#64748b]">Minimum</p>
+          <p className="mt-1 text-sm text-[#172b4d]">
+            {formatAngka(barang.minimum)}
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] text-[#64748b]">Kurang</p>
+          <p className="mt-1 text-sm font-semibold text-[#c2413a]">
+            {formatAngka(barang.kekurangan)}
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -211,43 +280,97 @@ export default function DashboardScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const tutup = () => setModal(null);
+  const [barangMenipis, setBarangMenipis] = useState<BarangMenipis[]>([]);
+  const [loadingBarangMenipis, setLoadingBarangMenipis] = useState(false);
+  const [errorBarangMenipis, setErrorBarangMenipis] = useState("");
+  const [sudahMemuatBarangMenipis, setSudahMemuatBarangMenipis] =
+    useState(false);
+  const [pencarianStok, setPencarianStok] = useState("");
+
+  const tutup = useCallback(() => setModal(null), []);
+
+  const ambilDashboard = useCallback(async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const response =
+        await apiRequest<DashboardResponse>("/dashboard");
+
+      setDashboard(response.data);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Gagal mengambil data Dashboard.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let aktif = true;
-
-    async function ambilDashboard() {
-      try {
-        setLoading(true);
-        setError("");
-
-        const response =
-          await apiRequest<DashboardResponse>("/dashboard");
-
-        if (aktif) {
-          setDashboard(response.data);
-        }
-      } catch (err) {
-        if (aktif) {
-          setError(
-            err instanceof Error
-              ? err.message
-              : "Gagal mengambil data Dashboard.",
-          );
-        }
-      } finally {
-        if (aktif) {
-          setLoading(false);
-        }
-      }
-    }
-
     void ambilDashboard();
+  }, [ambilDashboard]);
 
-    return () => {
-      aktif = false;
-    };
+  const ambilBarangMenipis = useCallback(async () => {
+    setLoadingBarangMenipis(true);
+    setErrorBarangMenipis("");
+
+    try {
+      const response = await apiRequest<{ data: ApiBarang[] }>("/barang");
+
+      const daftar = (Array.isArray(response.data) ? response.data : [])
+        .map((item): BarangMenipis | null => {
+          const stok = Number(item.stok);
+          const minimum = Number(item.stok_minimum);
+
+          if (
+            !Number.isFinite(stok) ||
+            !Number.isFinite(minimum) ||
+            stok > minimum
+          ) {
+            return null;
+          }
+
+          return {
+            id: item.id,
+            kode: item.kode_barang,
+            nama: item.nama_barang,
+            stok,
+            minimum,
+            satuan: item.satuan || "unit",
+            lokasi: item.lokasi || "",
+            kategori: item.kategori_barang?.nama_kategori || "",
+            kekurangan: Math.max(0, minimum - stok),
+          };
+        })
+        .filter((item): item is BarangMenipis => item !== null)
+        .sort((a, b) => {
+          if (b.kekurangan !== a.kekurangan) {
+            return b.kekurangan - a.kekurangan;
+          }
+          return a.nama.localeCompare(b.nama);
+        });
+
+      setBarangMenipis(daftar);
+      setSudahMemuatBarangMenipis(true);
+    } catch (err) {
+      setErrorBarangMenipis(
+        err instanceof Error
+          ? err.message
+          : "Gagal mengambil daftar barang.",
+      );
+    } finally {
+      setLoadingBarangMenipis(false);
+    }
   }, []);
+
+  const bukaDetailStok = useCallback(() => {
+    setPencarianStok("");
+    setModal("stok");
+    void ambilBarangMenipis();
+  }, [ambilBarangMenipis]);
 
   const kategori = (dashboard?.stok_per_kategori ?? []).map(
     (item, index) => ({
@@ -323,48 +446,59 @@ export default function DashboardScreen() {
     },
   ];
 
-  const aktivitas: Aktivitas[] = (dashboard?.mutasi_terbaru ?? []).map(
-    (item) => {
-      const masuk = item.jenis_mutasi.toLowerCase() === "masuk";
-      const namaBarang = item.barang?.nama_barang ?? "Barang";
-      const satuan = item.barang?.satuan ?? "unit";
-      const namaUser = item.user?.name;
+  const aktivitas: Aktivitas[] = (
+    dashboard?.mutasi_terbaru ?? []
+  ).map((item) => {
+    const masuk = item.jenis_mutasi.toLowerCase() === "masuk";
+    const namaBarang = item.barang?.nama_barang ?? "Barang";
+    const satuan = item.barang?.satuan ?? "unit";
+    const namaUser = item.user?.name;
 
-      return {
-        id: item.id,
-        judul: `Barang ${masuk ? "masuk" : "keluar"} #${item.id}`,
-        detail: `${formatAngka(item.jumlah)} ${namaBarang} (${satuan})${
-          namaUser ? ` · ${namaUser}` : ""
-        }`,
-        waktu: formatWaktu(item.created_at),
-        icon: masuk ? PackagePlus : PackageMinus,
-        bg: masuk ? "#eaf8ef" : "#f2ecff",
-        color: masuk ? "#15803d" : "#7c3aed",
-      };
-    },
-  );
+    return {
+      id: item.id,
+      judul: `Barang ${masuk ? "masuk" : "keluar"} #${item.id}`,
+      detail: `${formatAngka(item.jumlah)} ${namaBarang} (${satuan})${
+        namaUser ? ` · ${namaUser}` : ""
+      }`,
+      waktu: formatWaktu(item.created_at),
+      icon: masuk ? PackagePlus : PackageMinus,
+      bg: masuk ? "#eaf8ef" : "#f2ecff",
+      color: masuk ? "#15803d" : "#7c3aed",
+    };
+  });
 
   const jumlahStokMenipis =
     dashboard?.jumlah_barang_stok_menipis ?? 0;
 
+  const hasilCariStok = useMemo(() => {
+    const q = pencarianStok.trim().toLowerCase();
+
+    if (!q) return barangMenipis;
+
+    return barangMenipis.filter(
+      (barang) =>
+        barang.nama.toLowerCase().includes(q) ||
+        barang.kode.toLowerCase().includes(q) ||
+        barang.kategori.toLowerCase().includes(q) ||
+        barang.lokasi.toLowerCase().includes(q),
+    );
+  }, [barangMenipis, pencarianStok]);
+
   return (
-    <div className="relative flex min-h-screen w-full items-start bg-[#f3f6fa]">
+    <div className="relative flex min-h-screen w-full min-w-0 items-start bg-[#f3f6fa]">
       <Sidebar active="Dashboard" />
 
       <div className="relative flex min-w-0 flex-1 flex-col">
-        {/* Top bar */}
-        <div className="flex min-h-[76px] w-full items-center justify-between gap-4 border-b border-solid border-[#dce4ee] bg-white px-6 py-4 md:px-[32px]">
+        <div className="flex min-h-[76px] w-full flex-wrap items-center justify-between gap-3 border-b border-solid border-[#dce4ee] bg-white px-4 py-4 sm:px-6 md:px-[32px]">
           <p className="text-[16px] font-bold text-[#172b4d]">
             Sistem Persediaan Infrastruktur TIK
           </p>
-
-          <p className="shrink-0 text-[12px] text-[#64748b]">
+          <p className="text-[12px] text-[#64748b]">
             {user?.nama} · {user?.role}
           </p>
         </div>
 
-        <div className="flex w-full flex-col gap-[24px] p-4 md:p-[32px]">
-          {/* Page heading */}
+        <div className="flex w-full min-w-0 flex-col gap-[24px] p-4 md:p-[32px]">
           <div>
             <h1 className="text-[26px] text-[#172b4d]">Dashboard</h1>
             <p className="mt-1 text-[14px] text-[#64748b]">
@@ -390,23 +524,21 @@ export default function DashboardScreen() {
               <button
                 type="button"
                 className="mt-3 rounded-md border border-[#f3c6c2] bg-white px-3 py-2 hover:bg-[#fff7f6]"
-                onClick={() => window.location.reload()}
+                onClick={() => void ambilDashboard()}
               >
                 Coba lagi
               </button>
             </div>
           )}
 
-          {/* KPI */}
           <div className="grid w-full grid-cols-1 gap-[14px] sm:grid-cols-2 xl:grid-cols-4">
             {metrics.map((metric) => (
               <MetricCard key={metric.label} m={metric} />
             ))}
           </div>
 
-          {/* Stock alert */}
           <div
-            className={`flex w-full flex-col gap-[16px] rounded-[12px] border p-[20px] ${
+            className={`flex w-full flex-col gap-[16px] rounded-[12px] border p-4 sm:p-[20px] ${
               jumlahStokMenipis > 0
                 ? "border-[#f3c6c2] bg-[#fef0ef]"
                 : "border-[#dce4ee] bg-white"
@@ -448,7 +580,7 @@ export default function DashboardScreen() {
 
               <button
                 type="button"
-                onClick={() => setModal("stok")}
+                onClick={bukaDetailStok}
                 disabled={!dashboard || loading}
                 className="flex h-[40px] items-center justify-center gap-[8px] rounded-[8px] border border-solid border-[#dce4ee] bg-white px-[15px] text-[14px] text-[#1769e0] hover:bg-[#f3f6fa] disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -458,23 +590,14 @@ export default function DashboardScreen() {
 
             {dashboard && jumlahStokMenipis === 0 && (
               <p className="text-[12px] text-[#64748b]">
-                Backend melaporkan tidak ada barang yang memenuhi
-                kondisi stok menipis.
-              </p>
-            )}
-
-            {dashboard && jumlahStokMenipis > 0 && (
-              <p className="text-[12px] text-[#8b433e]">
-                API saat ini memberikan jumlah barang menipis, tetapi
-                belum memberikan daftar barang dan batas minimumnya.
+                Backend melaporkan tidak ada barang yang memenuhi kondisi
+                stok menipis.
               </p>
             )}
           </div>
 
-          {/* Operational overview */}
-          <div className="grid w-full grid-cols-1 items-start gap-[16px] xl:grid-cols-2">
-            {/* Stok per kategori */}
-            <div className="flex min-w-0 flex-col gap-[18px] rounded-[12px] border border-solid border-[#dce4ee] bg-white p-[20px] drop-shadow-[0px_8px_12px_rgba(18,49,79,0.07)]">
+          <div className="grid w-full min-w-0 grid-cols-1 items-start gap-[16px] xl:grid-cols-2">
+            <div className="flex min-w-0 flex-col gap-[18px] rounded-[12px] border border-solid border-[#dce4ee] bg-white p-4 drop-shadow-[0px_8px_12px_rgba(18,49,79,0.07)] sm:p-[20px]">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-[16px] text-[#172b4d]">
@@ -484,7 +607,6 @@ export default function DashboardScreen() {
                     Total unit tersedia berdasarkan API
                   </p>
                 </div>
-
                 <span className="rounded-full bg-[#eaf2ff] px-[9px] py-[5px] text-[12px] text-[#1769e0]">
                   {formatAngka(totalStokKategori)} unit
                 </span>
@@ -591,13 +713,11 @@ export default function DashboardScreen() {
               )}
             </div>
 
-            {/* Aktivitas terbaru */}
-            <div className="flex min-w-0 flex-col gap-[16px] rounded-[12px] border border-solid border-[#dce4ee] bg-white p-[20px] drop-shadow-[0px_8px_12px_rgba(18,49,79,0.07)]">
+            <div className="flex min-w-0 flex-col gap-[16px] rounded-[12px] border border-solid border-[#dce4ee] bg-white p-4 drop-shadow-[0px_8px_12px_rgba(18,49,79,0.07)] sm:p-[20px]">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-[16px] text-[#172b4d]">
                   Aktivitas terbaru
                 </p>
-
                 <button
                   type="button"
                   onClick={() => setModal("aktivitas")}
@@ -626,24 +746,111 @@ export default function DashboardScreen() {
         </div>
       </div>
 
-      {/* Modal stok minimum */}
       {modal === "stok" && (
-        <Modal title="Barang di bawah stok minimum" onClose={tutup}>
-          <div className="flex flex-col gap-[10px]">
-            <p className="text-[13px] text-[#64748b]">
-              Backend melaporkan {formatAngka(jumlahStokMenipis)} barang
-              di bawah stok minimum.
-            </p>
-            <p className="text-[12px] text-[#64748b]">
-              Endpoint Dashboard yang tersedia saat ini hanya
-              memberikan jumlahnya, belum daftar barang, jumlah stok,
-              dan nilai minimum masing-masing barang.
-            </p>
+        <Modal
+          title="Barang di bawah stok minimum"
+          onClose={tutup}
+          lebar="max-w-[720px]"
+        >
+          <div className="flex flex-col gap-4">
+            <div className="rounded-lg bg-[#f8fafc] p-3">
+              <p className="text-sm text-[#172b4d]">
+                Ditemukan{" "}
+                <strong>{formatAngka(barangMenipis.length)} barang</strong>{" "}
+                dengan stok kurang dari atau sama dengan stok minimum.
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-[#64748b]">
+                Data diambil dari daftar barang di server. Periksa jumlah
+                stok dan batas minimum sebelum melakukan pengadaan atau
+                penyesuaian.
+              </p>
+            </div>
+
+            <label className="flex h-10 items-center gap-2 rounded-lg border border-[#dce4ee] px-3 text-[#94a3b8] focus-within:border-[#1769e0]">
+              <Search size={16} className="shrink-0" />
+              <input
+                value={pencarianStok}
+                onChange={(e) => setPencarianStok(e.target.value)}
+                placeholder="Cari nama, kode, kategori, atau lokasi..."
+                className="min-w-0 flex-1 bg-transparent text-sm text-[#172b4d] outline-none placeholder:text-[#94a3b8]"
+              />
+              {pencarianStok && (
+                <button
+                  type="button"
+                  aria-label="Hapus pencarian"
+                  onClick={() => setPencarianStok("")}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </label>
+
+            {loadingBarangMenipis && (
+              <div className="flex items-center justify-center gap-2 py-8 text-sm text-[#64748b]">
+                <RefreshCw size={16} className="animate-spin" />
+                Memuat daftar barang...
+              </div>
+            )}
+
+            {errorBarangMenipis && !loadingBarangMenipis && (
+              <div className="rounded-lg border border-[#f3c6c2] bg-[#fef0ef] p-4 text-sm text-[#c2413a]">
+                <p>Daftar barang gagal dimuat.</p>
+                <p className="mt-1 text-xs">{errorBarangMenipis}</p>
+                <button
+                  type="button"
+                  onClick={() => void ambilBarangMenipis()}
+                  className="mt-3 rounded-md border border-[#f3c6c2] bg-white px-3 py-2 text-xs"
+                >
+                  Coba lagi
+                </button>
+              </div>
+            )}
+
+            {!loadingBarangMenipis &&
+              !errorBarangMenipis &&
+              hasilCariStok.length === 0 && (
+                <div className="flex flex-col items-center gap-2 py-8 text-center">
+                  {barangMenipis.length === 0 ? (
+                    <>
+                      <CircleCheck size={30} className="text-[#15803d]" />
+                      <p className="text-sm font-semibold text-[#172b4d]">
+                        Tidak ada barang yang menipis
+                      </p>
+                      <p className="text-xs text-[#64748b]">
+                        Semua barang berada di atas batas minimum stok.
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-[#64748b]">
+                      Tidak ada barang yang cocok dengan pencarian.
+                    </p>
+                  )}
+                </div>
+              )}
+
+            {!loadingBarangMenipis &&
+              !errorBarangMenipis &&
+              hasilCariStok.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  {hasilCariStok.map((barang) => (
+                    <BarangMenipisItem key={barang.id} barang={barang} />
+                  ))}
+                </div>
+              )}
+
+            {!loadingBarangMenipis &&
+              !errorBarangMenipis &&
+              sudahMemuatBarangMenipis &&
+              barangMenipis.length > 0 && (
+                <p className="text-xs text-[#64748b]">
+                  Menampilkan {formatAngka(hasilCariStok.length)} dari{" "}
+                  {formatAngka(barangMenipis.length)} barang menipis.
+                </p>
+              )}
           </div>
         </Modal>
       )}
 
-      {/* Modal seluruh aktivitas */}
       {modal === "aktivitas" && (
         <Modal title="Semua aktivitas" onClose={tutup}>
           <div className="flex flex-col">

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Eye,
+  Archive,
+  RotateCcw,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -44,6 +46,7 @@ interface ApiBarang {
   stok: number;
   stok_minimum: number;
   deskripsi: string | null;
+  aktif: boolean;
   kategori_barang?: {
     id: number;
     nama_kategori: string;
@@ -73,6 +76,7 @@ interface Barang {
   stok: number;
   satuan: string;
   minimum: number;
+  aktif: boolean;
 }
 
 const ITEM_PER_HALAMAN = 5;
@@ -115,6 +119,7 @@ function ubahDataBarang(item: ApiBarang): Barang {
     stok: Number(item.stok) || 0,
     satuan: item.satuan,
     minimum: Number(item.stok_minimum) || 0,
+    aktif: Boolean(item.aktif),
   };
 }
 
@@ -153,7 +158,8 @@ function unduhCsv(rows: Barang[]) {
     "Stok",
     "Satuan",
     "Minimum",
-    "Status",
+    "Status stok",
+    "Status barang",
   ];
 
   const esc = (value: string | number) =>
@@ -170,6 +176,7 @@ function unduhCsv(rows: Barang[]) {
       barang.satuan,
       barang.minimum,
       statusDari(barang),
+      barang.aktif ? "Aktif" : "Diarsipkan",
     ]),
   ]
     .map((row) => row.map(esc).join(";"))
@@ -188,6 +195,7 @@ function unduhCsv(rows: Barang[]) {
   document.body.appendChild(a);
   a.click();
   a.remove();
+
   URL.revokeObjectURL(url);
 }
 
@@ -195,16 +203,17 @@ function SummaryCard({ r }: { r: Ringkasan }) {
   const Icon = r.icon;
 
   return (
-    <div className="relative flex min-w-px flex-[1_0_0] items-center gap-[11px] overflow-clip rounded-[8px] border border-solid border-[#dce4ee] bg-white p-[14px]">
+    <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-[#dce4ee] bg-white p-3">
       <div
-        className="flex size-[34px] shrink-0 items-center justify-center rounded-[8px]"
+        className="flex size-8 shrink-0 items-center justify-center rounded-lg"
         style={{ backgroundColor: r.bg }}
       >
         <Icon size={16} style={{ color: r.color }} />
       </div>
-      <div className="flex shrink-0 flex-col gap-[2px] whitespace-nowrap">
-        <p className="text-[18px] text-[#172b4d]">{r.nilai}</p>
-        <p className="text-[10px] text-[#64748b]">{r.label}</p>
+
+      <div className="min-w-0">
+        <p className="text-lg leading-6 text-[#172b4d]">{r.nilai}</p>
+        <p className="truncate text-[10px] text-[#64748b]">{r.label}</p>
       </div>
     </div>
   );
@@ -215,7 +224,7 @@ function StockStatus({ menipis }: { menipis: boolean }) {
 
   return (
     <div
-      className={`flex shrink-0 items-center gap-[5px] rounded-[999px] px-[9px] py-[5px] ${
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-1 ${
         menipis ? "bg-[#fef0ef]" : "bg-[#eaf8ef]"
       }`}
     >
@@ -223,8 +232,9 @@ function StockStatus({ menipis }: { menipis: boolean }) {
         size={12}
         className={menipis ? "text-[#c2413a]" : "text-[#15803d]"}
       />
+
       <span
-        className={`whitespace-nowrap text-[12px] ${
+        className={`whitespace-nowrap text-[11px] ${
           menipis ? "text-[#c2413a]" : "text-[#15803d]"
         }`}
       >
@@ -247,6 +257,7 @@ function FilterSelect({
 }) {
   const [buka, setBuka] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const aktif = value !== "";
 
   useEffect(() => {
     if (!buka) return;
@@ -270,36 +281,34 @@ function FilterSelect({
     };
   }, [buka]);
 
-  const aktif = value !== "";
-  const semua = [label, ...options];
-
   return (
-    <div ref={ref} className="relative shrink-0">
+    <div ref={ref} className="relative min-w-0 max-w-full">
       <button
         type="button"
         onClick={() => setBuka((v) => !v)}
         aria-haspopup="listbox"
         aria-expanded={buka}
-        className={`flex h-[40px] shrink-0 cursor-pointer items-center gap-[10px] rounded-[8px] border bg-white px-[12px] ${
+        className={`flex h-10 max-w-full items-center gap-2 rounded-lg border bg-white px-3 ${
           aktif ? "border-[#1769e0] bg-[#eaf2ff]" : "border-[#dce4ee]"
         }`}
       >
         <span
-          className={`whitespace-nowrap text-[14px] ${
+          className={`truncate text-[13px] ${
             aktif ? "text-[#1769e0]" : "text-[#172b4d]"
           }`}
         >
           {aktif ? value : label}
         </span>
-        <ChevronDown size={14} className="text-[#64748b]" />
+
+        <ChevronDown size={14} className="shrink-0 text-[#64748b]" />
       </button>
 
       {buka && (
         <div
           role="listbox"
-          className="absolute left-0 top-[44px] z-20 w-max min-w-full rounded-[10px] border border-solid border-[#dce4ee] bg-white p-[6px] shadow-lg"
+          className="absolute left-0 top-11 z-30 max-h-64 min-w-full overflow-y-auto rounded-lg border border-[#dce4ee] bg-white p-1 shadow-lg"
         >
-          {semua.map((opsi, i) => {
+          {[label, ...options].map((opsi, i) => {
             const terpilih = i === 0 ? !aktif : value === opsi;
 
             return (
@@ -312,7 +321,7 @@ function FilterSelect({
                   onChange(i === 0 ? "" : opsi);
                   setBuka(false);
                 }}
-                className={`flex w-full items-center rounded-[6px] px-[10px] py-[8px] text-left text-[13px] hover:bg-[#f3f6fa] ${
+                className={`flex w-full items-center rounded-md px-3 py-2 text-left text-[13px] hover:bg-[#f3f6fa] ${
                   terpilih
                     ? "bg-[#eaf2ff] text-[#1769e0]"
                     : "text-[#172b4d]"
@@ -331,11 +340,17 @@ function FilterSelect({
 export default function MasterBarangScreen() {
   const { user } = useAuth();
 
+  // Hak akses: hanya Admin yang boleh mengelola master barang.
+  const isAdmin = String(user?.role ?? "").toLowerCase() === "admin";
+
   const [daftar, setDaftar] = useState<Barang[]>([]);
   const [kategoriApi, setKategoriApi] = useState<ApiKategori[]>([]);
   const [cari, setCari] = useState("");
   const [kategori, setKategori] = useState("");
   const [status, setStatus] = useState("");
+  const [statusBarang, setStatusBarang] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [aksiId, setAksiId] = useState<number | null>(null);
   const [lokasi, setLokasi] = useState("");
   const [halaman, setHalaman] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -349,8 +364,16 @@ export default function MasterBarangScreen() {
       setError("");
 
       try {
+        const statusApi = !isAdmin
+          ? "aktif"
+          : statusBarang === "Barang aktif"
+            ? "aktif"
+            : statusBarang === "Diarsipkan"
+              ? "arsip"
+              : "semua";
+
         const [responsBarang, responsKategori] = await Promise.all([
-          apiRequest<ApiResponse<ApiBarang[]>>("/barang"),
+          apiRequest<ApiResponse<ApiBarang[]>>(`/barang?status=${statusApi}`),
           apiRequest<ApiResponse<ApiKategori[]>>("/kategori-barang"),
         ]);
 
@@ -376,7 +399,14 @@ export default function MasterBarangScreen() {
     return () => {
       aktif = false;
     };
-  }, []);
+  }, [isAdmin, statusBarang, refreshKey]);
+
+  useEffect(() => {
+    // Petugas Gudang tidak boleh membuka form tambah barang melalui URL.
+    if (!isAdmin && window.location.hash === "#form") {
+      window.location.hash = "master";
+    }
+  }, [isAdmin]);
 
   const opsiKategori = useMemo(
     () =>
@@ -394,9 +424,11 @@ export default function MasterBarangScreen() {
 
   const ringkasan: Ringkasan[] = useMemo(() => {
     const total = daftar.length;
+
     const menipis = daftar.filter(
       (b) => statusDari(b) === "Menipis",
     ).length;
+
     const kritis = daftar.filter(
       (b) => b.minimum > 0 && b.stok <= b.minimum / 2,
     ).length;
@@ -437,7 +469,8 @@ export default function MasterBarangScreen() {
     cari.trim() !== "" ||
     kategori !== "" ||
     status !== "" ||
-    lokasi !== "";
+    lokasi !== "" ||
+    statusBarang !== "";
 
   const hasil = useMemo(() => {
     const q = cari.trim().toLowerCase();
@@ -457,63 +490,118 @@ export default function MasterBarangScreen() {
     1,
     Math.ceil(hasil.length / ITEM_PER_HALAMAN),
   );
+
   const halamanAktif = Math.min(halaman, totalHalaman);
   const mulai = (halamanAktif - 1) * ITEM_PER_HALAMAN;
   const tampil = hasil.slice(mulai, mulai + ITEM_PER_HALAMAN);
 
-  const ubahFilter = (
-    setter: (value: string) => void,
-  ) => (value: string) => {
-    setter(value);
-    setHalaman(1);
-  };
+  const ubahFilter =
+    (setter: (value: string) => void) => (value: string) => {
+      setter(value);
+      setHalaman(1);
+    };
 
   const reset = () => {
     setCari("");
     setKategori("");
     setStatus("");
+    setStatusBarang("");
     setLokasi("");
     setHalaman(1);
   };
 
+  const arsipkanBarang = async (barang: Barang) => {
+    const setuju = window.confirm(
+      `Arsipkan barang "${barang.nama}"? Barang yang diarsipkan tidak dapat digunakan untuk transaksi stok baru.`,
+    );
+    if (!setuju) return;
+
+    setAksiId(barang.id);
+    setError("");
+    try {
+      await apiRequest<ApiResponse<unknown>>(`/barang/${barang.id}`, {
+        method: "DELETE",
+      });
+      window.alert(`Barang "${barang.nama}" berhasil diarsipkan.`);
+      setRefreshKey((nilai) => nilai + 1);
+    } catch (err) {
+      window.alert(
+        err instanceof Error ? err.message : "Barang gagal diarsipkan.",
+      );
+    } finally {
+      setAksiId(null);
+    }
+  };
+
+  const aktifkanKembali = async (barang: Barang) => {
+    const setuju = window.confirm(
+      `Aktifkan kembali barang "${barang.nama}"?`,
+    );
+    if (!setuju) return;
+
+    setAksiId(barang.id);
+    setError("");
+    try {
+      await apiRequest<ApiResponse<unknown>>(
+        `/barang/${barang.id}/restore`,
+        { method: "PATCH" },
+      );
+      window.alert(`Barang "${barang.nama}" berhasil diaktifkan kembali.`);
+      setRefreshKey((nilai) => nilai + 1);
+    } catch (err) {
+      window.alert(
+        err instanceof Error
+          ? err.message
+          : "Barang gagal diaktifkan kembali.",
+      );
+    } finally {
+      setAksiId(null);
+    }
+  };
+
+  const kolom =
+    "grid grid-cols-[minmax(70px,0.8fr)_minmax(130px,1.5fr)_minmax(90px,1fr)_minmax(100px,1.2fr)_minmax(48px,0.55fr)_minmax(48px,0.55fr)_minmax(76px,0.8fr)_minmax(150px,1.4fr)] items-center gap-2";
+
   return (
-    <div className="relative flex size-full items-start bg-[#f3f6fa]">
+    <div className="relative flex min-h-screen w-full min-w-0 items-start overflow-x-clip bg-[#f3f6fa]">
       <Sidebar active="Master Barang" />
 
-      <div className="relative flex min-h-[1040px] min-w-px flex-[1_0_0] flex-col items-start overflow-clip">
-        <div className="flex h-[76px] w-full shrink-0 items-center justify-between overflow-clip whitespace-nowrap border-b border-solid border-[#dce4ee] bg-white px-[32px]">
-          <p className="shrink-0 text-[16px] font-bold text-[#172b4d]">
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
+        <header className="flex min-h-[76px] w-full min-w-0 flex-wrap items-center justify-between gap-2 border-b border-[#dce4ee] bg-white px-4 py-3 sm:px-6 lg:px-8">
+          <p className="text-sm font-bold text-[#172b4d] sm:text-base">
             Sistem Persediaan Infrastruktur TIK
           </p>
-          <p className="shrink-0 text-[12px] text-[#64748b]">
+
+          <p className="text-xs text-[#64748b]">
             {user?.nama} · {user?.role}
           </p>
-        </div>
+        </header>
 
-        <div className="flex w-full shrink-0 flex-col items-start gap-[24px] overflow-x-auto p-[32px]">
-          <div className="flex w-full shrink-0 items-center justify-between gap-4">
-            <div className="flex min-w-px flex-col items-start gap-[5px]">
-              <p className="text-[26px] text-[#172b4d]">Master Barang</p>
-              <p className="text-[14px] text-[#64748b]">
+        <main className="flex w-full min-w-0 flex-col gap-5 overflow-x-clip p-4 sm:p-6 lg:p-8">
+          <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="text-2xl text-[#172b4d]">Master Barang</h1>
+              <p className="mt-1 text-sm text-[#64748b]">
                 Kelola data induk perangkat dan material infrastruktur TIK
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={bukaFormBaru}
-              className="flex h-[40px] shrink-0 cursor-pointer items-center justify-center gap-[8px] rounded-[8px] border border-solid border-[#1769e0] bg-[#1769e0] px-[15px] text-white hover:bg-[#0e4fab]"
-            >
-              <Plus size={16} />
-              <span className="whitespace-nowrap text-[14px]">
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={bukaFormBaru}
+                className="flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-[#1769e0] bg-[#1769e0] px-4 text-sm text-white hover:bg-[#0e4fab]"
+              >
+                <Plus size={16} />
                 Tambah barang
-              </span>
-            </button>
+              </button>
+            )}
           </div>
 
-          <div className="flex w-full shrink-0 flex-wrap items-end gap-[10px]">
-            <div className="flex h-[40px] w-[320px] max-w-full shrink-0 items-center gap-[8px] rounded-[8px] border border-solid border-[#dce4ee] bg-white px-[12px] text-[#94a3b8] focus-within:border-[#1769e0]">
+          <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
+            <div className="flex h-10 w-full min-w-0 items-center gap-2 rounded-lg border border-[#dce4ee] bg-white px-3 text-[#94a3b8] focus-within:border-[#1769e0] sm:w-72">
               <Search size={16} className="shrink-0" />
+
               <input
                 type="text"
                 value={cari}
@@ -523,14 +611,15 @@ export default function MasterBarangScreen() {
                 }
                 placeholder="Cari kode atau nama barang..."
                 aria-label="Cari kode atau nama barang"
-                className="min-w-px flex-[1_0_0] bg-transparent text-[14px] text-[#172b4d] outline-none placeholder:text-[#94a3b8]"
+                className="min-w-0 flex-1 bg-transparent text-sm text-[#172b4d] outline-none placeholder:text-[#94a3b8]"
               />
+
               {cari && (
                 <button
                   type="button"
                   aria-label="Hapus pencarian"
                   onClick={() => ubahFilter(setCari)("")}
-                  className="flex shrink-0 items-center justify-center text-[#64748b]"
+                  className="shrink-0 text-[#64748b]"
                 >
                   <X size={14} />
                 </button>
@@ -543,12 +632,23 @@ export default function MasterBarangScreen() {
               options={opsiKategori}
               onChange={ubahFilter(setKategori)}
             />
+
+            {isAdmin && (
+              <FilterSelect
+                label="Semua barang"
+                value={statusBarang}
+                options={["Barang aktif", "Diarsipkan"]}
+                onChange={ubahFilter(setStatusBarang)}
+              />
+            )}
+
             <FilterSelect
               label="Semua status"
               value={status}
               options={["Tersedia", "Menipis"]}
               onChange={ubahFilter(setStatus)}
             />
+
             <FilterSelect
               label="Semua lokasi"
               value={lokasi}
@@ -560,31 +660,30 @@ export default function MasterBarangScreen() {
               <button
                 type="button"
                 onClick={reset}
-                className="h-[40px] shrink-0 whitespace-nowrap px-[6px] text-[13px] text-[#1769e0] hover:underline"
+                className="h-10 shrink-0 px-2 text-[13px] text-[#1769e0] hover:underline"
               >
                 Reset filter
               </button>
             )}
 
-            <div className="h-px min-w-px flex-[1_0_0]" />
+            <div className="flex-1" />
 
             <button
               type="button"
               onClick={() => unduhCsv(hasil)}
               disabled={hasil.length === 0}
               title={`Unduh ${hasil.length} barang (CSV)`}
-              className="flex h-[40px] shrink-0 cursor-pointer items-center justify-center gap-[8px] rounded-[8px] border border-solid border-[#dce4ee] bg-white px-[15px] text-[#1769e0] hover:bg-[#f3f6fa] disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-[#dce4ee] bg-white px-4 text-sm text-[#1769e0] hover:bg-[#f3f6fa] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Download size={16} />
-              <span className="whitespace-nowrap text-[14px]">
-                Unduh data
-              </span>
+              Unduh data
             </button>
           </div>
 
           {error && (
-            <div className="flex w-full flex-col gap-3 rounded-[8px] border border-[#fecaca] bg-[#fef2f2] p-4 text-[13px] text-[#b91c1c]">
+            <div className="flex w-full min-w-0 flex-col gap-3 rounded-lg border border-[#fecaca] bg-[#fef2f2] p-4 text-[13px] text-[#b91c1c]">
               <p>Data Master Barang gagal dimuat: {error}</p>
+
               <button
                 type="button"
                 onClick={() => window.location.reload()}
@@ -595,117 +694,164 @@ export default function MasterBarangScreen() {
             </div>
           )}
 
-          <div className="flex w-full shrink-0 items-start gap-[10px] overflow-x-auto">
+          <div className="grid w-full min-w-0 grid-cols-2 gap-3 xl:grid-cols-4">
             {ringkasan.map((r) => (
               <SummaryCard key={r.label} r={r} />
             ))}
           </div>
 
-          <div className="relative flex w-full min-w-[900px] shrink-0 flex-col items-start rounded-[12px] border border-solid border-[#dce4ee] bg-white shadow-[0px_8px_12px_rgba(18,49,79,0.07)]">
-            <div className="flex h-[42px] w-full shrink-0 items-center gap-[12px] border-b border-solid border-[#dce4ee] bg-[#f8fafc] px-[16px] text-[11px] uppercase text-[#64748b]">
-              <p className="w-[105px] shrink-0">Kode</p>
-              <p className="w-[225px] shrink-0">Nama barang</p>
-              <p className="w-[140px] shrink-0">Kategori</p>
-              <p className="w-[185px] shrink-0">Lokasi</p>
-              <p className="w-[72px] shrink-0">Stok</p>
-              <p className="w-[66px] shrink-0">Minimum</p>
-              <p className="w-[90px] shrink-0">Status</p>
-              <p className="min-w-px flex-[1_0_0] text-right">Aksi</p>
-            </div>
-
-            <div className="flex w-full shrink-0 flex-col items-start">
-              {loading && (
-                <div className="flex w-full items-center justify-center px-4 py-12 text-[14px] text-[#64748b]">
-                  Memuat data barang dari server...
+          <section className="w-full min-w-0 overflow-hidden rounded-xl border border-[#dce4ee] bg-white shadow-[0px_8px_12px_rgba(18,49,79,0.07)]">
+            <div className="w-full min-w-0 overflow-x-auto">
+              <div className="min-w-[850px]">
+                <div
+                  className={`${kolom} min-h-[42px] border-b border-[#dce4ee] bg-[#f8fafc] px-3 text-[10px] uppercase text-[#64748b] sm:px-4 sm:text-[11px]`}
+                >
+                  <p>Kode</p>
+                  <p>Nama barang</p>
+                  <p>Kategori</p>
+                  <p>Lokasi</p>
+                  <p>Stok</p>
+                  <p>Minimum</p>
+                  <p>Status</p>
+                  <p className="text-right">Aksi</p>
                 </div>
-              )}
 
-              {!loading && !error && tampil.length === 0 && (
-                <div className="flex w-full flex-col items-center gap-[8px] px-[16px] py-[48px] text-center">
-                  <p className="text-[14px] text-[#172b4d]">
-                    Tidak ada barang yang cocok
-                  </p>
-                  <p className="text-[12px] text-[#64748b]">
-                    Coba kata kunci lain atau ubah filter yang dipilih.
-                  </p>
-                  {adaFilter && (
-                    <button
-                      type="button"
-                      onClick={reset}
-                      className="mt-[4px] h-[36px] rounded-[8px] border border-solid border-[#dce4ee] bg-white px-[14px] text-[13px] text-[#1769e0] hover:bg-[#f3f6fa]"
-                    >
-                      Reset filter
-                    </button>
-                  )}
-                </div>
-              )}
+                {loading && (
+                  <div className="flex items-center justify-center px-4 py-12 text-sm text-[#64748b]">
+                    Memuat data barang dari server...
+                  </div>
+                )}
 
-              {!loading &&
-                !error &&
-                tampil.map((b) => {
-                  const Icon = b.icon;
-                  const menipis = statusDari(b) === "Menipis";
+                {!loading && !error && tampil.length === 0 && (
+                  <div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
+                    <p className="text-sm text-[#172b4d]">
+                      Tidak ada barang yang cocok
+                    </p>
 
-                  return (
-                    <div
-                      key={b.id}
-                      className="flex min-h-[66px] w-full shrink-0 items-center gap-[12px] border-b border-solid border-[#dce4ee] px-[16px] py-[10px]"
-                    >
-                      <p className="w-[105px] shrink-0 text-[11px] text-[#1769e0]">
-                        {b.kode}
-                      </p>
+                    <p className="text-xs text-[#64748b]">
+                      Coba kata kunci lain atau ubah filter yang dipilih.
+                    </p>
 
-                      <div className="flex w-[225px] shrink-0 items-center gap-[10px]">
-                        <div className="flex size-[34px] shrink-0 items-center justify-center rounded-[6px] bg-[#eaf2ff]">
-                          <Icon size={16} className="text-[#1769e0]" />
-                        </div>
-                        <p className="min-w-px flex-[1_0_0] text-[12px] leading-[1.35] text-[#172b4d]">
-                          {b.nama}
-                        </p>
-                      </div>
-
-                      <p className="w-[140px] shrink-0 text-[11px] text-[#64748b]">
-                        {b.kategori}
-                      </p>
-
-                      <p className="w-[185px] shrink-0 text-[11px] leading-[1.4] text-[#64748b]">
-                        {b.lokasi}
-                      </p>
-
-                      <p
-                        className={`w-[72px] shrink-0 text-[12px] ${
-                          menipis ? "text-[#c2413a]" : "text-[#172b4d]"
-                        }`}
+                    {adaFilter && (
+                      <button
+                        type="button"
+                        onClick={reset}
+                        className="mt-1 h-9 rounded-lg border border-[#dce4ee] bg-white px-4 text-[13px] text-[#1769e0] hover:bg-[#f3f6fa]"
                       >
-                        {b.stok} {b.satuan}
-                      </p>
+                        Reset filter
+                      </button>
+                    )}
+                  </div>
+                )}
 
-                      <p className="w-[66px] shrink-0 text-[11px] text-[#64748b]">
-                        {b.minimum}
-                      </p>
+                {!loading &&
+                  !error &&
+                  tampil.map((b) => {
+                    const Icon = b.icon;
+                    const menipis = statusDari(b) === "Menipis";
 
-                      <div className="flex w-[90px] shrink-0 items-start">
-                        <StockStatus menipis={menipis} />
-                      </div>
+                    return (
+                      <div
+                        key={b.id}
+                        className={`${kolom} min-h-[66px] border-b border-[#dce4ee] px-3 py-3 last:border-b-0 sm:px-4`}
+                      >
+                        <p className="truncate text-[11px] text-[#1769e0]">
+                          {b.kode}
+                        </p>
 
-                      <div className="flex min-w-px flex-[1_0_0] justify-end">
-                        <button
-                          type="button"
-                          onClick={() => bukaDetail(b.kode)}
-                          className="flex h-[32px] shrink-0 cursor-pointer items-center justify-center gap-[6px] rounded-[6px] border border-solid border-[#dce4ee] bg-white px-[10px] text-[12px] text-[#1769e0] hover:bg-[#eaf2ff]"
+                        <div className="flex min-w-0 items-center gap-2">
+                          <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-[#eaf2ff]">
+                            <Icon size={15} className="text-[#1769e0]" />
+                          </div>
+
+                          <p
+                            title={b.nama}
+                            className="min-w-0 break-words text-[11px] leading-snug text-[#172b4d]"
+                          >
+                            {b.nama}
+                          </p>
+                        </div>
+
+                        <p
+                          title={b.kategori}
+                          className="min-w-0 break-words text-[11px] text-[#64748b]"
                         >
-                          <Eye size={14} />
-                          Detail
-                        </button>
+                          {b.kategori}
+                        </p>
+
+                        <p
+                          title={b.lokasi}
+                          className="min-w-0 break-words text-[11px] leading-snug text-[#64748b]"
+                        >
+                          {b.lokasi}
+                        </p>
+
+                        <p
+                          className={`text-[11px] ${
+                            menipis ? "text-[#c2413a]" : "text-[#172b4d]"
+                          }`}
+                        >
+                          {b.stok} {b.satuan}
+                        </p>
+
+                        <p className="text-[11px] text-[#64748b]">
+                          {b.minimum}
+                        </p>
+
+                        <div className="flex min-w-0 flex-col items-start gap-1">
+                          <StockStatus menipis={menipis} />
+                          {!b.aktif && (
+                            <span className="rounded-full bg-[#f1f5f9] px-2 py-1 text-[10px] text-[#64748b]">
+                              Diarsipkan
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => bukaDetail(b.kode)}
+                            className="flex h-8 items-center justify-center gap-1 rounded-md border border-[#dce4ee] bg-white px-2 text-[11px] text-[#1769e0] hover:bg-[#eaf2ff]"
+                          >
+                            <Eye size={13} />
+                            Detail
+                          </button>
+
+                          {isAdmin && b.aktif && (
+                            <button
+                              type="button"
+                              disabled={aksiId === b.id}
+                              onClick={() => void arsipkanBarang(b)}
+                              title="Arsipkan barang"
+                              className="flex h-8 items-center justify-center gap-1 rounded-md border border-[#fecaca] bg-white px-2 text-[11px] text-[#b91c1c] hover:bg-[#fef2f2] disabled:cursor-wait disabled:opacity-50"
+                            >
+                              <Archive size={13} />
+                              Arsipkan
+                            </button>
+                          )}
+
+                          {isAdmin && !b.aktif && (
+                            <button
+                              type="button"
+                              disabled={aksiId === b.id}
+                              onClick={() => void aktifkanKembali(b)}
+                              title="Aktifkan kembali barang"
+                              className="flex h-8 items-center justify-center gap-1 rounded-md border border-[#bbf7d0] bg-white px-2 text-[11px] text-[#15803d] hover:bg-[#eaf8ef] disabled:cursor-wait disabled:opacity-50"
+                            >
+                              <RotateCcw size={13} />
+                              Aktifkan
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+              </div>
             </div>
 
-            <div className="flex w-full shrink-0 flex-col items-start px-[16px] pb-[14px]">
-              <div className="flex w-full shrink-0 items-center justify-between gap-3 pt-[14px]">
-                <p className="whitespace-nowrap text-[12px] text-[#64748b]">
+            <div className="flex w-full min-w-0 flex-col gap-3 px-4 pb-4">
+              <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-3 border-t border-[#dce4ee] pt-4">
+                <p className="text-xs text-[#64748b]">
                   {loading
                     ? "Memuat data..."
                     : hasil.length === 0
@@ -713,58 +859,59 @@ export default function MasterBarangScreen() {
                       : `Menampilkan ${mulai + 1}–${mulai + tampil.length} dari ${hasil.length} barang`}
                 </p>
 
-                <div className="flex shrink-0 items-start gap-[6px]">
+                <div className="flex shrink-0 items-center gap-1.5">
                   <button
                     type="button"
                     aria-label="Halaman sebelumnya"
                     onClick={() => setHalaman(halamanAktif - 1)}
                     disabled={halamanAktif <= 1 || loading}
-                    className="flex size-[32px] items-center justify-center rounded-[6px] border border-solid border-[#dce4ee] text-[#64748b] disabled:cursor-not-allowed disabled:opacity-40"
+                    className="flex size-8 items-center justify-center rounded-md border border-[#dce4ee] text-[#64748b] disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <ChevronLeft size={14} />
                   </button>
 
-                  {Array.from({ length: totalHalaman }, (_, i) => i + 1).map(
-                    (n) => (
-                      <button
-                        key={n}
-                        type="button"
-                        onClick={() => setHalaman(n)}
-                        aria-current={n === halamanAktif ? "page" : undefined}
-                        disabled={loading}
-                        className={`flex size-[32px] items-center justify-center rounded-[6px] ${
+                  {Array.from(
+                    { length: totalHalaman },
+                    (_, i) => i + 1,
+                  ).map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setHalaman(n)}
+                      aria-current={n === halamanAktif ? "page" : undefined}
+                      disabled={loading}
+                      className={`flex size-8 items-center justify-center rounded-md ${
+                        n === halamanAktif
+                          ? "bg-[#1769e0]"
+                          : "border border-[#dce4ee]"
+                      }`}
+                    >
+                      <span
+                        className={`text-xs ${
                           n === halamanAktif
-                            ? "bg-[#1769e0]"
-                            : "border border-solid border-[#dce4ee]"
+                            ? "font-bold text-white"
+                            : "text-[#172b4d]"
                         }`}
                       >
-                        <span
-                          className={`text-[12px] ${
-                            n === halamanAktif
-                              ? "font-bold text-white"
-                              : "text-[#172b4d]"
-                          }`}
-                        >
-                          {n}
-                        </span>
-                      </button>
-                    ),
-                  )}
+                        {n}
+                      </span>
+                    </button>
+                  ))}
 
                   <button
                     type="button"
                     aria-label="Halaman berikutnya"
                     onClick={() => setHalaman(halamanAktif + 1)}
                     disabled={halamanAktif >= totalHalaman || loading}
-                    className="flex size-[32px] items-center justify-center rounded-[6px] border border-solid border-[#dce4ee] text-[#64748b] disabled:cursor-not-allowed disabled:opacity-40"
+                    className="flex size-8 items-center justify-center rounded-md border border-[#dce4ee] text-[#64748b] disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <ChevronRight size={14} />
                   </button>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+          </section>
+        </main>
       </div>
     </div>
   );

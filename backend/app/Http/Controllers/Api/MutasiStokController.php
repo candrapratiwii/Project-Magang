@@ -12,9 +12,16 @@ use Illuminate\Validation\ValidationException;
 
 class MutasiStokController extends Controller
 {
+    /**
+     * Menampilkan seluruh riwayat mutasi stok,
+     * termasuk transaksi barang yang sudah diarsipkan.
+     */
     public function index(): JsonResponse
     {
-        $mutasi = MutasiStok::with(['barang', 'user'])
+        $mutasi = MutasiStok::with([
+            'barang.kategoriBarang',
+            'user',
+        ])
             ->latest()
             ->get();
 
@@ -24,6 +31,10 @@ class MutasiStokController extends Controller
         ]);
     }
 
+    /**
+     * Mencatat mutasi stok masuk atau keluar.
+     * Barang nonaktif tidak boleh digunakan untuk transaksi baru.
+     */
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -55,8 +66,17 @@ class MutasiStokController extends Controller
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            $stokSebelum = $barang->stok;
-            $jumlah = $validated['jumlah'];
+            // Tolak transaksi jika barang sudah diarsipkan.
+            if (!$barang->aktif) {
+                throw ValidationException::withMessages([
+                    'barang_id' => [
+                        'Barang sudah diarsipkan dan tidak dapat digunakan untuk transaksi baru.',
+                    ],
+                ]);
+            }
+
+            $stokSebelum = (int) $barang->stok;
+            $jumlah = (int) $validated['jumlah'];
 
             if (
                 $validated['jenis_mutasi'] === 'keluar'
@@ -89,7 +109,10 @@ class MutasiStokController extends Controller
 
         return response()->json([
             'message' => 'Mutasi stok berhasil dicatat.',
-            'data' => $mutasi->load(['barang', 'user']),
+            'data' => $mutasi->load([
+                'barang.kategoriBarang',
+                'user',
+            ]),
         ], 201);
     }
 }

@@ -16,6 +16,7 @@ class Barang extends Model
         'stok',
         'stok_minimum',
         'deskripsi',
+        'aktif',
     ];
 
     protected function casts(): array
@@ -23,6 +24,7 @@ class Barang extends Model
         return [
             'stok' => 'integer',
             'stok_minimum' => 'integer',
+            'aktif' => 'boolean',
         ];
     }
 

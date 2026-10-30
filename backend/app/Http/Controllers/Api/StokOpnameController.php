@@ -62,7 +62,13 @@ class StokOpnameController extends Controller
                 $barang = Barang::whereKey($baris['barang_id'])
                     ->lockForUpdate()
                     ->firstOrFail();
-
+                if (!$barang->aktif) {
+                        throw ValidationException::withMessages([
+                            'catatan' => [
+                                "Barang {$barang->nama_barang} sudah diarsipkan dan tidak dapat digunakan dalam stok opname.",
+                            ],
+                        ]);
+                }
                 // Pastikan stok tidak berubah sejak data opname dimuat.
                 if ((int) $barang->stok !== (int) $baris['stok_sistem']) {
                     throw ValidationException::withMessages([
@@ -126,7 +132,7 @@ class StokOpnameController extends Controller
 
     public function riwayat(): JsonResponse
     {
-        $riwayat = StokOpname::with('details')
+        $riwayat = StokOpname::with(['details', 'user'])
             ->orderByDesc('selesai_pada')
             ->get();
 
