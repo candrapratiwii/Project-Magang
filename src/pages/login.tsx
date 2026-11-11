@@ -1,4 +1,3 @@
-
 import { useState, type FormEvent } from "react";
 import { Eye, EyeOff, User as UserIcon } from "lucide-react";
 import { apiRequest } from "../api";
@@ -23,6 +22,48 @@ type LoginResponse = {
     status: string;
   };
 };
+
+/**
+ * Ubah error teknis dari API menjadi pesan yang aman dan mudah dipahami.
+ * Detail server, alamat localhost, dan pesan exception tidak ditampilkan.
+ */
+function getLoginErrorMessage(error: unknown): string {
+  if (error instanceof TypeError) {
+    return "Tidak dapat terhubung ke server. Periksa koneksi dan coba kembali.";
+  }
+
+  const message =
+    error instanceof Error ? error.message.toLowerCase() : "";
+
+  if (
+    message.includes("failed to fetch") ||
+    message.includes("network") ||
+    message.includes("load failed") ||
+    message.includes("fetch")
+  ) {
+    return "Tidak dapat terhubung ke server. Periksa koneksi dan coba kembali.";
+  }
+
+  if (
+    message.includes("credential") ||
+    message.includes("password") ||
+    message.includes("username") ||
+    message.includes("unauthenticated") ||
+    message.includes("invalid")
+  ) {
+    return "Nama pengguna atau kata sandi tidak sesuai.";
+  }
+
+  if (
+    message.includes("nonaktif") ||
+    message.includes("tidak aktif") ||
+    message.includes("inactive")
+  ) {
+    return "Akun Anda sedang nonaktif. Silakan hubungi Admin.";
+  }
+
+  return "Login belum berhasil. Periksa kembali data akun atau coba beberapa saat lagi.";
+}
 
 export default function LoginScreen({ onLogin }: LoginScreenProps) {
   const savedUser = localStorage.getItem("simpera-net-user") ?? "";
@@ -57,11 +98,13 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
       });
 
       if (!response.token || !response.user) {
-        throw new Error("Respons login dari server tidak sesuai.");
+        throw new Error("Respons login tidak sesuai.");
       }
 
-      if (response.user.role !== "admin" &&
-          response.user.role !== "petugas_gudang") {
+      if (
+        response.user.role !== "admin" &&
+        response.user.role !== "petugas_gudang"
+      ) {
         throw new Error("Role pengguna tidak dikenali.");
       }
 
@@ -85,11 +128,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
       setPassword("");
       onLogin(loggedInUser);
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Login gagal. Silakan coba kembali.",
-      );
+      setError(getLoginErrorMessage(err));
     } finally {
       setIsLoading(false);
     }
@@ -217,13 +256,18 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
               <p
                 className="mt-4 text-[12px] text-[#c2410c]"
                 role="alert"
+                aria-live="polite"
               >
                 {error}
               </p>
             ) : null}
 
             {info ? (
-              <p className="mt-4 text-[12px] text-[#0e4fab]">
+              <p
+                className="mt-4 text-[12px] text-[#0e4fab]"
+                role="status"
+                aria-live="polite"
+              >
                 {info}
               </p>
             ) : null}

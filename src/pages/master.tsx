@@ -27,6 +27,7 @@ import {
 import { useAuth } from "../auth";
 import { apiRequest } from "../api";
 import Sidebar from "../Components/Sidebar";
+import { useNotification } from "../Components/Notification";
 
 interface Ringkasan {
   nilai: string;
@@ -339,6 +340,7 @@ function FilterSelect({
 
 export default function MasterBarangScreen() {
   const { user } = useAuth();
+  const { success: notifySuccess, error: notifyError } = useNotification();
 
   // Hak akses: hanya Admin yang boleh mengelola master barang.
   const isAdmin = String(user?.role ?? "").toLowerCase() === "admin";
@@ -355,6 +357,10 @@ export default function MasterBarangScreen() {
   const [halaman, setHalaman] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [konfirmasi, setKonfirmasi] = useState<{
+    barang: Barang;
+    aksi: "arsip" | "aktifkan";
+  } | null>(null);
 
   useEffect(() => {
     let aktif = true;
@@ -510,49 +516,42 @@ export default function MasterBarangScreen() {
     setHalaman(1);
   };
 
-  const arsipkanBarang = async (barang: Barang) => {
-    const setuju = window.confirm(
-      `Arsipkan barang "${barang.nama}"? Barang yang diarsipkan tidak dapat digunakan untuk transaksi stok baru.`,
-    );
-    if (!setuju) return;
-
-    setAksiId(barang.id);
-    setError("");
-    try {
-      await apiRequest<ApiResponse<unknown>>(`/barang/${barang.id}`, {
-        method: "DELETE",
-      });
-      window.alert(`Barang "${barang.nama}" berhasil diarsipkan.`);
-      setRefreshKey((nilai) => nilai + 1);
-    } catch (err) {
-      window.alert(
-        err instanceof Error ? err.message : "Barang gagal diarsipkan.",
-      );
-    } finally {
-      setAksiId(null);
-    }
+  const arsipkanBarang = (barang: Barang) => {
+    setKonfirmasi({ barang, aksi: "arsip" });
   };
 
-  const aktifkanKembali = async (barang: Barang) => {
-    const setuju = window.confirm(
-      `Aktifkan kembali barang "${barang.nama}"?`,
-    );
-    if (!setuju) return;
+  const aktifkanKembali = (barang: Barang) => {
+    setKonfirmasi({ barang, aksi: "aktifkan" });
+  };
 
+  const jalankanKonfirmasi = async () => {
+    if (!konfirmasi) return;
+
+    const { barang, aksi } = konfirmasi;
+    setKonfirmasi(null);
     setAksiId(barang.id);
     setError("");
+
     try {
-      await apiRequest<ApiResponse<unknown>>(
-        `/barang/${barang.id}/restore`,
-        { method: "PATCH" },
-      );
-      window.alert(`Barang "${barang.nama}" berhasil diaktifkan kembali.`);
+      if (aksi === "arsip") {
+        await apiRequest<ApiResponse<unknown>>(`/barang/${barang.id}`, {
+          method: "DELETE",
+        });
+        notifySuccess(`Barang "${barang.nama}" berhasil diarsipkan.`);
+      } else {
+        await apiRequest<ApiResponse<unknown>>(
+          `/barang/${barang.id}/restore`,
+          { method: "PATCH" },
+        );
+        notifySuccess(`Barang "${barang.nama}" berhasil diaktifkan kembali.`);
+      }
+
       setRefreshKey((nilai) => nilai + 1);
-    } catch (err) {
-      window.alert(
-        err instanceof Error
-          ? err.message
-          : "Barang gagal diaktifkan kembali.",
+    } catch {
+      notifyError(
+        aksi === "arsip"
+          ? "Barang gagal diarsipkan. Silakan coba kembali."
+          : "Barang gagal diaktifkan kembali. Silakan coba kembali.",
       );
     } finally {
       setAksiId(null);
@@ -913,6 +912,85 @@ export default function MasterBarangScreen() {
           </section>
         </main>
       </div>
+
+      {konfirmasi && (
+        <div
+          className="fixed inset-0 z-[11000] flex items-center justify-center bg-slate-950/50 p-4"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && aksiId === null) {
+              setKonfirmasi(null);
+            }
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="konfirmasi-judul"
+            aria-describedby="konfirmasi-pesan"
+            className="w-full max-w-md rounded-xl bg-white p-5 shadow-2xl"
+          >
+            <div className="flex items-start gap-3">
+              <div
+                className={`flex size-10 shrink-0 items-center justify-center rounded-full ${
+                  konfirmasi.aksi === "arsip"
+                    ? "bg-red-50 text-red-600"
+                    : "bg-green-50 text-green-600"
+                }`}
+              >
+                {konfirmasi.aksi === "arsip" ? (
+                  <Archive size={19} />
+                ) : (
+                  <RotateCcw size={19} />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2
+                  id="konfirmasi-judul"
+                  className="text-base font-semibold text-[#172b4d]"
+                >
+                  {konfirmasi.aksi === "arsip"
+                    ? "Konfirmasi Arsip Barang"
+                    : "Konfirmasi Aktifkan Barang"}
+                </h2>
+                <p
+                  id="konfirmasi-pesan"
+                  className="mt-2 text-sm leading-relaxed text-[#64748b]"
+                >
+                  {konfirmasi.aksi === "arsip"
+                    ? `Apakah Anda yakin ingin mengarsipkan barang "${konfirmasi.barang.nama}"? Barang yang diarsipkan tidak dapat digunakan untuk transaksi stok baru.`
+                    : `Apakah Anda yakin ingin mengaktifkan kembali barang "${konfirmasi.barang.nama}"?`}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={aksiId !== null}
+                onClick={() => setKonfirmasi(null)}
+                className="h-10 rounded-lg border border-[#dce4ee] bg-white px-4 text-sm font-medium text-[#475569] hover:bg-[#f8fafc] disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={aksiId !== null}
+                onClick={() => void jalankanKonfirmasi()}
+                className={`h-10 rounded-lg px-4 text-sm font-medium text-white disabled:cursor-wait disabled:opacity-60 ${
+                  konfirmasi.aksi === "arsip"
+                    ? "bg-red-600 hover:bg-red-700"
+                    : "bg-green-600 hover:bg-green-700"
+                }`}
+              >
+                {konfirmasi.aksi === "arsip"
+                  ? "Ya, Arsipkan"
+                  : "Ya, Aktifkan"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

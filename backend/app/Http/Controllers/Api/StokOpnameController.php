@@ -14,12 +14,131 @@ use Illuminate\Validation\ValidationException;
 
 class StokOpnameController extends Controller
 {
+    /**
+     * Membuat periode stok opname baru.
+     */
+    public function mulai(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'nama' => ['required', 'string', 'max:255'],
+            'gudang' => ['required', 'string', 'max:255'],
+        ]);
+
+        $tahun = now()->format('Y');
+        $lockName = 'stok-opname-nomor-' . $tahun;
+
+        // Mencegah dua proses membuat nomor yang sama secara bersamaan.
+        $lock = DB::selectOne(
+            'SELECT GET_LOCK(?, 10) AS lock_status',
+            [$lockName]
+        );
+
+        if (!$lock || (int) $lock->lock_status !== 1) {
+            return response()->json([
+                'message' => 'Sistem sedang memproses pembuatan nomor opname. Silakan coba kembali.',
+            ], 409);
+        }
+
+        try {
+            $opname = DB::transaction(function () use ($validated, $request, $tahun) {
+
+                // Satu gudang hanya boleh memiliki satu periode aktif.
+                $opnameAktif = StokOpname::where(
+                    'gudang',
+                    $validated['gudang']
+                )
+                    ->where('status', 'berlangsung')
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($opnameAktif) {
+                    throw ValidationException::withMessages([
+                        'gudang' => [
+                            'Masih terdapat periode stok opname yang berlangsung pada gudang ini.',
+                        ],
+                    ]);
+                }
+
+                // Ambil nomor terakhir pada tahun berjalan.
+                $nomorTerakhir = StokOpname::where(
+                    'nomor',
+                    'like',
+                    "SO-{$tahun}-%"
+                )
+                    ->orderByDesc('id')
+                    ->lockForUpdate()
+                    ->first();
+
+                $angkaTerakhir = 0;
+
+                if ($nomorTerakhir) {
+                    $bagianNomor = explode('-', $nomorTerakhir->nomor);
+                    $angkaTerakhir = (int) end($bagianNomor);
+                }
+
+                $nomorBaru = sprintf(
+                    'SO-%s-%04d',
+                    $tahun,
+                    $angkaTerakhir + 1
+                );
+
+                // Simpan periode opname sejak tombol mulai ditekan.
+                return StokOpname::create([
+                    'nomor' => $nomorBaru,
+                    'nama' => $validated['nama'],
+                    'gudang' => $validated['gudang'],
+                    'user_id' => $request->user()->id,
+                    'dimulai_pada' => now(),
+                    'selesai_pada' => null,
+                    'status' => 'berlangsung',
+                    'total_barang' => 0,
+                    'jumlah_selisih' => 0,
+                ]);
+            });
+
+            return response()->json([
+                'message' => 'Periode stok opname berhasil dimulai.',
+                'data' => $opname,
+            ], 201);
+
+        } finally {
+            DB::selectOne(
+                'SELECT RELEASE_LOCK(?)',
+                [$lockName]
+            );
+        }
+    }
+
+    /**
+     * Mengambil periode opname yang masih berlangsung.
+     */
+    public function aktif(Request $request): JsonResponse
+    {
+        $gudang = $request->query('gudang');
+
+        $query = StokOpname::with(['details', 'user'])
+            ->where('status', 'berlangsung');
+
+        if ($gudang) {
+            $query->where('gudang', $gudang);
+        }
+
+        $opname = $query
+            ->orderByDesc('dimulai_pada')
+            ->first();
+
+        return response()->json([
+            'data' => $opname,
+        ]);
+    }
+
+    /**
+     * Menyelesaikan periode opname yang sudah dimulai.
+     */
     public function selesaikan(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'nomor' => ['required', 'string', 'max:50'],
-            'nama' => ['required', 'string', 'max:255'],
-            'gudang' => ['required', 'string', 'max:255'],
+            'opname_id' => ['required', 'integer', 'exists:stok_opnames,id'],
             'catatan' => ['required', 'array', 'min:1'],
             'catatan.*.barang_id' => [
                 'required',
@@ -44,32 +163,37 @@ class StokOpnameController extends Controller
         ]);
 
         $opname = DB::transaction(function () use ($validated, $request) {
-            // Buat data periode opname terlebih dahulu.
-            $opname = StokOpname::create([
-                'nomor' => $validated['nomor'],
-                'nama' => $validated['nama'],
-                'gudang' => $validated['gudang'],
-                'user_id' => $request->user()->id,
-                'dimulai_pada' => now(),
-                'selesai_pada' => now(),
-                'total_barang' => count($validated['catatan']),
-                'jumlah_selisih' => 0,
-            ]);
+
+            // Kunci periode agar tidak diselesaikan dua kali.
+            $opname = StokOpname::whereKey($validated['opname_id'])
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($opname->status !== 'berlangsung') {
+                throw ValidationException::withMessages([
+                    'opname_id' => [
+                        'Periode stok opname ini sudah selesai atau tidak dapat diproses.',
+                    ],
+                ]);
+            }
 
             $jumlahSelisih = 0;
 
             foreach ($validated['catatan'] as $baris) {
+
                 $barang = Barang::whereKey($baris['barang_id'])
                     ->lockForUpdate()
                     ->firstOrFail();
+
                 if (!$barang->aktif) {
-                        throw ValidationException::withMessages([
-                            'catatan' => [
-                                "Barang {$barang->nama_barang} sudah diarsipkan dan tidak dapat digunakan dalam stok opname.",
-                            ],
-                        ]);
+                    throw ValidationException::withMessages([
+                        'catatan' => [
+                            "Barang {$barang->nama_barang} sudah diarsipkan dan tidak dapat digunakan dalam stok opname.",
+                        ],
+                    ]);
                 }
-                // Pastikan stok tidak berubah sejak data opname dimuat.
+
+                // Pastikan stok belum berubah sejak data dimuat.
                 if ((int) $barang->stok !== (int) $baris['stok_sistem']) {
                     throw ValidationException::withMessages([
                         'catatan' => [
@@ -95,8 +219,8 @@ class StokOpnameController extends Controller
                         'stok_sesudah' => $stokFisik,
                         'keterangan' => sprintf(
                             'Penyesuaian stok opname %s (%s). %s',
-                            $validated['nomor'],
-                            $validated['nama'],
+                            $opname->nomor,
+                            $opname->nama,
                             $baris['keterangan'] ?? 'Tanpa keterangan'
                         ),
                     ]);
@@ -104,7 +228,6 @@ class StokOpnameController extends Controller
                     $jumlahSelisih++;
                 }
 
-                // Simpan detail setiap barang, termasuk yang tidak memiliki selisih.
                 StokOpnameDetail::create([
                     'stok_opname_id' => $opname->id,
                     'barang_id' => $barang->id,
@@ -117,11 +240,15 @@ class StokOpnameController extends Controller
                 ]);
             }
 
+            // Tandai periode sebagai selesai setelah seluruh detail tersimpan.
             $opname->update([
+                'selesai_pada' => now(),
+                'status' => 'selesai',
+                'total_barang' => count($validated['catatan']),
                 'jumlah_selisih' => $jumlahSelisih,
             ]);
 
-            return $opname;
+            return $opname->load(['details', 'user']);
         });
 
         return response()->json([
@@ -130,9 +257,13 @@ class StokOpnameController extends Controller
         ]);
     }
 
+    /**
+     * Mengambil seluruh riwayat stok opname.
+     */
     public function riwayat(): JsonResponse
     {
         $riwayat = StokOpname::with(['details', 'user'])
+            ->where('status', 'selesai')
             ->orderByDesc('selesai_pada')
             ->get();
 

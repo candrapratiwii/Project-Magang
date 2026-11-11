@@ -16,140 +16,230 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-
 import { useAuth } from "../auth";
-
 import Sidebar from "../Components/Sidebar";
 import { apiRequest } from "../api";
-
-
-
 /* ------------------------------ Data ------------------------------ */
 
 interface ApiBarang {
+
   id: number;
+
   kode_barang: string;
+
   nama_barang: string;
+
   stok: number;
+
   kategori_barang?: {
+
     nama?: string;
+
     nama_kategori?: string;
+
     nama_barang?: string;
+
   } | null;
+
   kategori?: { nama?: string; nama_kategori?: string } | string | null;
+
 }
 
 interface Katalog {
+
   id: number;
+
   nama: string;
+
   kode: string;
+
   kategori: string;
+
   gudang: string;
+
   sistem: number;
+
 }
 
 const daftarGudang = ["Gudang Utama"];
 
 interface Baris {
+
   barangId: number;
+
   nama: string;
+
   kode: string;
+
   kategori: string;
+
   sistem: number;
+
   fisik: string; // "" = belum dihitung
+
   catatan: string;
+
 }
 
 interface Aktif {
+
+  id: number;
+
   nomor: string;
+
   nama: string;
+
   gudang: string;
+
   dibuka: string; // ISO
+
   baris: Baris[];
+
   lastSaved?: string;
+
 }
 
 interface Periode {
+
   nomor: string;
+
   periode: string;
+
   tanggal: string;
+
   diperiksa: string;
+
   selisih: number;
+
   petugas: string;
+
 }
 
 interface ApiStokOpname {
+
   id: number;
+
   nomor: string;
+
   nama: string;
+
   gudang?: string;
+
   user_id?: number | null;
+
   dimulai_pada?: string | null;
+
   selesai_pada?: string | null;
+
   total_barang?: number;
+
   jumlah_selisih?: number;
+
   details?: unknown[];
+
   user?: { nama?: string; name?: string } | null;
+
   petugas?: string | null;
+
 }
 
 function petakanRiwayat(data: ApiStokOpname[]): Periode[] {
+
   return data.map((item) => {
+
     const mulai = item.dimulai_pada ? new Date(item.dimulai_pada) : null;
+
     const selesai = item.selesai_pada ? new Date(item.selesai_pada) : null;
+
     const tanggal =
+
       mulai && selesai && !Number.isNaN(mulai.getTime()) && !Number.isNaN(selesai.getTime())
+
         ? rentang(mulai, selesai)
+
         : selesai && !Number.isNaN(selesai.getTime())
+
           ? tglPendek(selesai)
+
           : "-";
 
     return {
+
       nomor: item.nomor,
+
       periode: item.nama?.replace(/^Opname\s+/i, "") || item.nama || "-",
+
       tanggal,
+
       diperiksa: `${Number(item.total_barang ?? item.details?.length ?? 0)} jenis`,
+
       selisih: Number(item.jumlah_selisih ?? 0),
+
       petugas: item.user?.nama ?? item.user?.name ?? item.petugas ?? "-",
+
     };
+
   });
+
 }
 
 function buatBaris(gudang: string, sumber: Katalog[]): Baris[] {
+
   return sumber
+
     .filter((barang) => barang.gudang === gudang)
+
     .map((barang) => ({
+
       barangId: barang.id,
+
       nama: barang.nama,
+
       kode: barang.kode,
+
       kategori: barang.kategori,
+
       sistem: barang.sistem,
+
       fisik: "",
+
       catatan: "",
+
     }));
+
 }
 
 const DRAF_KEY = "simpera-opname-aktif";
 
 function bacaDraf(): Aktif | null {
+
   try {
+
     const raw = localStorage.getItem(DRAF_KEY);
+
     if (!raw) return null;
+
     const parsed = JSON.parse(raw) as Aktif;
+
     if (!Array.isArray(parsed.baris) || !parsed.baris.every((b) => Number.isInteger(b.barangId))) {
+
       return null;
+
     }
+
     return parsed;
+
   } catch {
+
     return null;
+
   }
+
 }
 
 const opsiHasil = ["Belum dihitung", "Sesuai", "Selisih"];
 
 /* ------------------------------ Util ------------------------------ */
-
-
 
 const TZ = "Asia/Makassar";
 
@@ -164,8 +254,6 @@ const tglPendek = (d: Date) =>
 const jam = (d: Date) =>
 
   d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", timeZone: TZ }) + " WITA";
-
-
 
 function rentang(a: Date, b: Date) {
 
@@ -185,8 +273,6 @@ function rentang(a: Date, b: Date) {
 
 }
 
-
-
 type Hasil = "belum" | "sesuai" | "selisih";
 
 const hasilDari = (b: Baris): Hasil =>
@@ -203,13 +289,9 @@ const labelHasil: Record<Hasil, string> = {
 
 };
 
-
-
 const esc = (v: string) =>
 
   v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-
-
 
 /* Cetak lewat iframe tersembunyi: tidak diblokir pop-up dan tidak ikut mencetak halaman */
 
@@ -273,8 +355,6 @@ ${a.baris
 
 </body></html>`;
 
-
-
   const iframe = document.createElement("iframe");
 
   iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0";
@@ -299,8 +379,6 @@ ${a.baris
 
   doc.close();
 
-
-
   const bersihkan = () => iframe.remove();
 
   win.addEventListener("afterprint", bersihkan);
@@ -319,11 +397,7 @@ ${a.baris
 
 }
 
-
-
 /* --------------------------- Komponen kecil --------------------------- */
-
-
 
 function StatusBadge({ label, tone }: { label: string; tone: "ok" | "warn" | "none" }) {
 
@@ -367,8 +441,6 @@ function StatusBadge({ label, tone }: { label: string; tone: "ok" | "warn" | "no
 
 }
 
-
-
 interface Ringkasan {
 
   nilai: string;
@@ -382,8 +454,6 @@ interface Ringkasan {
   color: string;
 
 }
-
-
 
 function SummaryCard({ r }: { r: Ringkasan }) {
 
@@ -428,8 +498,6 @@ function SummaryCard({ r }: { r: Ringkasan }) {
   );
 
 }
-
-
 
 function OutlineButton({
 
@@ -481,8 +549,6 @@ function OutlineButton({
 
 }
 
-
-
 function Modal({
 
   title,
@@ -510,8 +576,6 @@ function Modal({
     return () => window.removeEventListener("keydown", h);
 
   }, [onClose]);
-
-
 
   return (
 
@@ -569,8 +633,6 @@ function Modal({
 
 }
 
-
-
 /* Dropdown filter. value "" = semua */
 
 function FilterSelect({
@@ -599,8 +661,6 @@ function FilterSelect({
 
   const ref = useRef<HTMLDivElement>(null);
 
-
-
   useEffect(() => {
 
     if (!buka) return;
@@ -627,13 +687,9 @@ function FilterSelect({
 
   }, [buka]);
 
-
-
   const aktif = value !== "";
 
   const semua = [label, ...options];
-
-
 
   return (
 
@@ -674,8 +730,6 @@ function FilterSelect({
         <ChevronDown size={14} className="shrink-0 text-[#64748b]" />
 
       </button>
-
-
 
       {buka && (
 
@@ -737,34 +791,30 @@ function FilterSelect({
 
 }
 
-
-
 /* ------------------------------ Halaman ------------------------------ */
-
-
 
 export default function StokOpnameScreen() {
 
   const { user } = useAuth();
 
+  const [aktif, setAktif] = useState<Aktif | null>(null);
+  const [memuatAktif, setMemuatAktif] = useState(true);
+  const [memulai, setMemulai] = useState(false);
+  const [menyelesaikan, setMenyelesaikan] = useState(false);
 
-
-  const [aktif, setAktif] = useState<Aktif | null>(() => bacaDraf());
   const [riwayat, setRiwayat] = useState<Periode[]>([]);
+
   const [katalog, setKatalog] = useState<Katalog[]>([]);
+
   const [memuatBarang, setMemuatBarang] = useState(true);
 
   const [semuaPeriode, setSemuaPeriode] = useState(false);
-
-
 
   const [cari, setCari] = useState("");
 
   const [kategori, setKategori] = useState("");
 
   const [hasil, setHasil] = useState("");
-
-
 
   const [modalMulai, setModalMulai] = useState(false);
 
@@ -780,8 +830,6 @@ export default function StokOpnameScreen() {
 
   const [toast, setToast] = useState("");
 
-
-
   useEffect(() => {
 
     if (!toast) return;
@@ -793,73 +841,179 @@ export default function StokOpnameScreen() {
   }, [toast]);
 
   useEffect(() => {
+
     let aktif = true;
 
     async function muatBarang() {
+
       setMemuatBarang(true);
+
       try {
+
         const response = await apiRequest<{ data: ApiBarang[] }>("/barang");
+
         const daftar = (response.data ?? []).map((barang) => {
+
           const kategoriBarang = barang.kategori_barang ?? barang.kategori;
+
           const namaKategori = typeof kategoriBarang === "string"
+
             ? kategoriBarang
+
             : kategoriBarang?.nama ?? kategoriBarang?.nama_kategori ?? "Tanpa kategori";
 
           return {
+
             id: barang.id,
+
             nama: barang.nama_barang,
+
             kode: barang.kode_barang,
+
             kategori: namaKategori,
+
             // Backend saat ini belum menyimpan gudang pada tabel barang.
+
             gudang: "Gudang Utama",
+
             sistem: Number(barang.stok ?? 0),
+
           } satisfies Katalog;
+
         });
 
         if (!aktif) return;
+
         setKatalog(daftar);
+
         if (daftar.length === 0) {
+
           setToast("Belum ada data barang di database. Tambahkan barang terlebih dahulu.");
+
         }
+
       } catch (error) {
+
         if (aktif) {
+
           setToast(error instanceof Error ? error.message : "Data barang gagal dimuat dari server.");
+
         }
+
       } finally {
+
         if (aktif) setMemuatBarang(false);
+
       }
+
     }
 
     void muatBarang();
+
     return () => { aktif = false; };
+
   }, []);
 
   // Muat riwayat opname dari database setiap halaman dibuka.
+
   useEffect(() => {
+
     let masihAktif = true;
 
     async function muatRiwayat() {
+
       try {
+
         const response = await apiRequest<{ data: ApiStokOpname[] }>("/stok-opname/riwayat");
+
         if (masihAktif) {
+
           setRiwayat(petakanRiwayat(response.data ?? []));
+
         }
+
       } catch (error) {
+
         if (masihAktif) {
+
           setToast(
+
             error instanceof Error
+
               ? `Riwayat opname gagal dimuat: ${error.message}`
+
               : "Riwayat opname gagal dimuat dari server.",
+
           );
+
         }
+
       }
+
     }
 
     void muatRiwayat();
+
     return () => { masihAktif = false; };
+
   }, []);
 
+  // Ambil periode aktif dari database setelah katalog barang selesai dimuat.
+  useEffect(() => {
+    if (memuatBarang) return;
 
+    let masihAktif = true;
+
+    async function muatOpnameAktif() {
+      setMemuatAktif(true);
+      try {
+        const response = await apiRequest<{ data: ApiStokOpname | null }>(
+          `/stok-opname/aktif?gudang=${encodeURIComponent(daftarGudang[0])}`,
+        );
+        if (!masihAktif) return;
+
+        const dataAktif = response.data;
+        if (!dataAktif) {
+          setAktif(null);
+          try { localStorage.removeItem(DRAF_KEY); } catch { /* Abaikan penyimpanan lokal. */ }
+          return;
+        }
+
+        const draf = bacaDraf();
+        const drafSesuai = draf !== null && draf.id === dataAktif.id;
+        const barisDariDatabase = buatBaris(dataAktif.gudang ?? daftarGudang[0], katalog);
+        const barisPulih = drafSesuai
+          ? barisDariDatabase.map((barang) => {
+              const tersimpan = draf.baris.find((item) => item.barangId === barang.barangId);
+              return tersimpan
+                ? { ...barang, fisik: tersimpan.fisik, catatan: tersimpan.catatan }
+                : barang;
+            })
+          : barisDariDatabase;
+
+        setAktif({
+          id: dataAktif.id,
+          nomor: dataAktif.nomor,
+          nama: dataAktif.nama,
+          gudang: dataAktif.gudang ?? daftarGudang[0],
+          dibuka: dataAktif.dimulai_pada ?? new Date().toISOString(),
+          baris: barisPulih,
+          lastSaved: drafSesuai ? draf.lastSaved : undefined,
+        });
+      } catch (error) {
+        if (masihAktif) {
+          setToast(error instanceof Error
+            ? `Periode opname aktif gagal dimuat: ${error.message}`
+            : 'Periode opname aktif gagal dimuat dari server.');
+        }
+      } finally {
+        if (masihAktif) setMemuatAktif(false);
+      }
+    }
+
+    void muatOpnameAktif();
+    return () => { masihAktif = false; };
+  }, [memuatBarang, katalog]);
 
   const baris = aktif?.baris ?? [];
 
@@ -870,8 +1024,6 @@ export default function StokOpnameScreen() {
     [baris],
 
   );
-
-
 
   const tampil = useMemo(() => {
 
@@ -891,8 +1043,6 @@ export default function StokOpnameScreen() {
 
   }, [baris, cari, kategori, hasil]);
 
-
-
   const dihitung = baris.filter((b) => b.fisik !== "").length;
 
   const adaSelisih = baris.filter((b) => hasilDari(b) === "selisih").length;
@@ -900,8 +1050,6 @@ export default function StokOpnameScreen() {
   const sesuai = baris.filter((b) => hasilDari(b) === "sesuai").length;
 
   const progres = baris.length ? Math.round((dihitung / baris.length) * 100) : 0;
-
-
 
   const ringkasan: Ringkasan[] = [
 
@@ -915,8 +1063,6 @@ export default function StokOpnameScreen() {
 
   ];
 
-
-
   const adaFilter = cari.trim() !== "" || kategori !== "" || hasil !== "";
 
   const resetFilter = () => {
@@ -929,8 +1075,6 @@ export default function StokOpnameScreen() {
 
   };
 
-
-
   const ubahBaris = (kode: string, patch: Partial<Baris>) => {
 
     setErrSelesai("");
@@ -942,8 +1086,6 @@ export default function StokOpnameScreen() {
     );
 
   };
-
-
 
   /* ---- Mulai periode baru ---- */
 
@@ -971,28 +1113,10 @@ export default function StokOpnameScreen() {
 
   };
 
-
-
-  const nomorBerikut = () => {
-
-    const angka = [
-
-      ...riwayat.map((r) => r.nomor),
-
-      ...(aktif ? [aktif.nomor] : []),
-
-    ].map((n) => parseInt(n.split("-").pop() ?? "0", 10));
-
-    return `SO-${new Date().getFullYear()}-${String(Math.max(0, ...angka) + 1).padStart(4, "0")}`;
-
-  };
-
-
-
-  const mulaiPeriode = () => {
-
-    if (memuatBarang) {
-      setErrNama("Data barang masih dimuat. Coba lagi sebentar.");
+  const mulaiPeriode = async () => {
+    if (memulai) return;
+    if (memuatBarang || memuatAktif) {
+      setErrNama("Data masih dimuat. Coba lagi sebentar.");
       return;
     }
     if (katalog.length === 0) {
@@ -1000,40 +1124,42 @@ export default function StokOpnameScreen() {
       return;
     }
     if (!namaBaru.trim()) {
-
       setErrNama("Nama periode wajib diisi.");
-
       return;
-
     }
 
-    const baru: Aktif = {
+    setMemulai(true);
+    setErrNama("");
+    try {
+      const response = await apiRequest<{ message?: string; data: ApiStokOpname }>(
+        "/stok-opname/mulai",
+        {
+          method: "POST",
+          body: JSON.stringify({ nama: namaBaru.trim(), gudang: gudangBaru }),
+        },
+      );
+      const data = response.data;
+      const baru: Aktif = {
+        id: data.id,
+        nomor: data.nomor,
+        nama: data.nama,
+        gudang: data.gudang ?? gudangBaru,
+        dibuka: data.dimulai_pada ?? new Date().toISOString(),
+        baris: buatBaris(data.gudang ?? gudangBaru, katalog),
+      };
 
-      nomor: nomorBerikut(),
-
-      nama: namaBaru.trim(),
-
-      gudang: gudangBaru,
-
-      dibuka: new Date().toISOString(),
-
-      baris: buatBaris(gudangBaru, katalog),
-
-    };
-
-    setAktif(baru);
-
-    resetFilter();
-
-    setErrSelesai("");
-
-    setModalMulai(false);
-
-    setToast(`Periode ${baru.nomor} dimulai.`);
-
+      setAktif(baru);
+      try { localStorage.setItem(DRAF_KEY, JSON.stringify(baru)); } catch { /* Data periode tetap tersimpan di server. */ }
+      resetFilter();
+      setErrSelesai("");
+      setModalMulai(false);
+      setToast(response.message ?? `Periode ${baru.nomor} dimulai.`);
+    } catch (error) {
+      setErrNama(error instanceof Error ? error.message : "Periode stok opname gagal dimulai.");
+    } finally {
+      setMemulai(false);
+    }
   };
-
-
 
   /* ---- Simpan draf ---- */
 
@@ -1058,8 +1184,6 @@ export default function StokOpnameScreen() {
     }
 
   };
-
-
 
   /* ---- Selesaikan opname ---- */
 
@@ -1097,38 +1221,53 @@ export default function StokOpnameScreen() {
 
   };
 
-
-
   const selesaikan = async () => {
-    if (!aktif) return;
+
+    if (!aktif || menyelesaikan) return;
+
+    setMenyelesaikan(true);
 
     try {
+
       const response = await apiRequest<{ message?: string }>("/stok-opname/selesaikan", {
+
         method: "POST",
+
         body: JSON.stringify({
-          nomor: aktif.nomor,
-          nama: aktif.nama,
-          gudang: aktif.gudang,
+          opname_id: aktif.id,
           catatan: baris.map((b) => ({
+
             barang_id: b.barangId,
+
             stok_sistem: b.sistem,
+
             stok_fisik: Number(b.fisik),
+
             keterangan: b.catatan.trim() || null,
+
           })),
+
         }),
+
       });
 
       const p: Periode = {
+
         nomor: aktif.nomor,
+
         periode: aktif.nama.replace(/^Opname\s+/i, ""),
+
         tanggal: rentang(new Date(aktif.dibuka), new Date()),
+
         diperiksa: `${baris.length} jenis`,
+
         selisih: adaSelisih,
+
         petugas: user?.nama ?? "-",
+
       };
-      // Ambil ulang riwayat dari database setelah opname berhasil disimpan.
-      const responseRiwayat = await apiRequest<{ data: ApiStokOpname[] }>("/stok-opname/riwayat");
-      setRiwayat(petakanRiwayat(responseRiwayat.data ?? []));
+
+      // Bersihkan periode aktif setelah server mengonfirmasi penyelesaian.
       try {
         localStorage.removeItem(DRAF_KEY);
       } catch {
@@ -1139,14 +1278,23 @@ export default function StokOpnameScreen() {
       resetFilter();
       setSemuaPeriode(false);
       setToast(response.message ?? `Opname ${p.nomor} berhasil diselesaikan.`);
+
+      // Refresh riwayat secara terpisah dari proses penyelesaian.
+      try {
+        const responseRiwayat = await apiRequest<{ data: ApiStokOpname[] }>("/stok-opname/riwayat");
+        setRiwayat(petakanRiwayat(responseRiwayat.data ?? []));
+      } catch {
+        setToast("Opname berhasil diselesaikan, tetapi riwayat belum berhasil diperbarui. Muat ulang halaman.");
+      }
+
     } catch (error) {
       setKonfirmSelesai(false);
       setErrSelesai(error instanceof Error ? error.message : "Stok opname gagal diselesaikan.");
       setToast(error instanceof Error ? error.message : "Stok opname gagal diselesaikan.");
+    } finally {
+      setMenyelesaikan(false);
     }
   };
-
-
 
   /* ---- Cetak ---- */
 
@@ -1158,21 +1306,15 @@ export default function StokOpnameScreen() {
 
   };
 
-
-
   const tampilRiwayat = semuaPeriode ? riwayat : riwayat.slice(0, 2);
 
   const dibuka = aktif ? new Date(aktif.dibuka) : null;
-
-
 
   return (
 
     <div className="relative flex size-full items-start bg-[#f3f6fa]">
 
       <Sidebar active="Stok Opname" />
-
-
 
       <div className="relative flex min-h-[1200px] min-w-px flex-[1_0_0] flex-col items-start overflow-clip">
 
@@ -1194,8 +1336,6 @@ export default function StokOpnameScreen() {
 
         </div>
 
-
-
         {/* Page content */}
 
         <div className="flex w-full shrink-0 flex-col items-start gap-[24px] overflow-clip p-[32px]">
@@ -1215,35 +1355,14 @@ export default function StokOpnameScreen() {
               <p className="w-full shrink-0 text-[14px] text-[#64748b]">
 
                 Cocokkan stok sistem dengan hasil perhitungan fisik gudang
+
                 {memuatBarang ? " · Memuat data barang..." : ` · ${katalog.length} barang dari database`}
 
               </p>
 
             </div>
 
-            <button
-
-              type="button"
-
-              onClick={bukaMulai}
-
-              className="flex h-[40px] shrink-0 cursor-pointer items-center justify-center gap-[8px] overflow-clip rounded-[8px] border border-solid border-[#1769e0] bg-[#1769e0] px-[15px] text-white hover:bg-[#0e4fab]"
-
-            >
-
-              <Plus size={16} className="shrink-0" />
-
-              <span className="shrink-0 whitespace-nowrap text-[14px] leading-[normal]">
-
-                Mulai periode baru
-
-              </span>
-
-            </button>
-
           </div>
-
-
 
           {aktif && dibuka ? (
 
@@ -1329,8 +1448,6 @@ export default function StokOpnameScreen() {
 
                 </div>
 
-
-
                 {errSelesai && (
 
                   <p
@@ -1349,8 +1466,6 @@ export default function StokOpnameScreen() {
 
               </div>
 
-
-
               {/* Opname summary */}
 
               <div className="flex w-full shrink-0 items-start gap-[12px] overflow-clip">
@@ -1362,8 +1477,6 @@ export default function StokOpnameScreen() {
                 ))}
 
               </div>
-
-
 
               {/* Toolbar (tanpa overflow-clip supaya dropdown tidak terpotong) */}
 
@@ -1413,8 +1526,6 @@ export default function StokOpnameScreen() {
 
                 </div>
 
-
-
                 <FilterSelect
 
                   label="Semua kategori"
@@ -1439,8 +1550,6 @@ export default function StokOpnameScreen() {
 
                 />
 
-
-
                 {adaFilter && (
 
                   <button
@@ -1459,17 +1568,11 @@ export default function StokOpnameScreen() {
 
                 )}
 
-
-
                 <div className="h-px min-w-px flex-[1_0_0]" />
-
-
 
                 <OutlineButton icon={Printer} label="Cetak lembar" onClick={cetak} />
 
               </div>
-
-
 
               {/* Physical count table */}
 
@@ -1490,8 +1593,6 @@ export default function StokOpnameScreen() {
                   <p className="min-w-px flex-[1_0_0]">Keterangan</p>
 
                 </div>
-
-
 
                 {tampil.length === 0 && (
 
@@ -1522,8 +1623,6 @@ export default function StokOpnameScreen() {
                   </div>
 
                 )}
-
-
 
                 {tampil.map((h) => {
 
@@ -1655,8 +1754,6 @@ export default function StokOpnameScreen() {
 
                 })}
 
-
-
                 <div className="flex w-full shrink-0 items-center justify-between overflow-clip p-[16px]">
 
                   <p className="shrink-0 whitespace-nowrap text-[10px] font-normal not-italic leading-[normal] text-[#64748b]">
@@ -1695,7 +1792,7 @@ export default function StokOpnameScreen() {
 
               </div>
 
-              <p className="text-[16px] text-[#172b4d]">Belum ada periode opname yang berjalan</p>
+              <p className="text-[16px] text-[#172b4d]">{memuatAktif ? "Memeriksa periode opname..." : "Belum ada periode opname yang berjalan"}</p>
 
               <p className="max-w-[420px] text-[12px] leading-[1.5] text-[#64748b]">
 
@@ -1724,8 +1821,6 @@ export default function StokOpnameScreen() {
             </div>
 
           )}
-
-
 
           {/* Period history */}
 
@@ -1775,8 +1870,6 @@ export default function StokOpnameScreen() {
 
             </div>
 
-
-
             <div className="flex h-[42px] w-full shrink-0 items-center gap-[12px] border-b border-solid border-[#dce4ee] bg-[#f8fafc] px-[16px] text-[11px] font-normal uppercase not-italic leading-[normal] text-[#64748b]">
 
               <p className="w-[115px] shrink-0">Nomor</p>
@@ -1794,8 +1887,6 @@ export default function StokOpnameScreen() {
               <p className="min-w-px flex-[1_0_0]">Petugas</p>
 
             </div>
-
-
 
             {tampilRiwayat.map((p) => (
 
@@ -1867,8 +1958,6 @@ export default function StokOpnameScreen() {
 
       </div>
 
-
-
       {/* Modal: mulai periode baru */}
 
       {modalMulai && (
@@ -1913,8 +2002,6 @@ export default function StokOpnameScreen() {
 
             </div>
 
-
-
             <div className="flex flex-col gap-[7px]">
 
               <label htmlFor="gudang-periode" className="text-[12px] text-[#172b4d]">
@@ -1949,8 +2036,6 @@ export default function StokOpnameScreen() {
 
             </div>
 
-
-
             <p className="text-[11px] leading-[1.5] text-[#64748b]">
 
               Daftar barang diambil dari gudang yang dipilih, dengan stok sistem saat ini
@@ -1958,8 +2043,6 @@ export default function StokOpnameScreen() {
               sebagai pembanding.
 
             </p>
-
-
 
             <div className="mt-[4px] flex justify-end gap-[8px]">
 
@@ -1983,7 +2066,9 @@ export default function StokOpnameScreen() {
 
                 onClick={mulaiPeriode}
 
-                className="h-[40px] rounded-[8px] border border-solid border-[#1769e0] bg-[#1769e0] px-[15px] text-[14px] text-white hover:bg-[#0e4fab]"
+                disabled={memulai || memuatAktif}
+
+                className="h-[40px] rounded-[8px] border border-solid border-[#1769e0] bg-[#1769e0] px-[15px] text-[14px] text-white hover:bg-[#0e4fab] disabled:cursor-not-allowed disabled:opacity-50"
 
               >
 
@@ -1998,8 +2083,6 @@ export default function StokOpnameScreen() {
         </Modal>
 
       )}
-
-
 
       {/* Modal: konfirmasi selesaikan */}
 
@@ -2057,7 +2140,9 @@ export default function StokOpnameScreen() {
 
                 onClick={selesaikan}
 
-                className="h-[40px] rounded-[8px] border border-solid border-[#1769e0] bg-[#1769e0] px-[15px] text-[14px] text-white hover:bg-[#0e4fab]"
+                disabled={menyelesaikan}
+
+                className="h-[40px] rounded-[8px] border border-solid border-[#1769e0] bg-[#1769e0] px-[15px] text-[14px] text-white hover:bg-[#0e4fab] disabled:cursor-not-allowed disabled:opacity-50"
 
               >
 
@@ -2072,8 +2157,6 @@ export default function StokOpnameScreen() {
         </Modal>
 
       )}
-
-
 
       {/* Notifikasi */}
 

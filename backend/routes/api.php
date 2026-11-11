@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\UserManagementController;
 use App\Http\Middleware\EnsureUserIsActive;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\ActivityLogController;
 
 // Login
 Route::post('/login', [AuthController::class, 'login'])
@@ -68,6 +69,10 @@ Route::middleware([
             KategoriBarangController::class,
             'destroy',
         ]);
+        Route::get('/activity-logs', [
+    ActivityLogController::class,
+    'index',
+]);
     });
 
 
@@ -141,13 +146,26 @@ Route::middleware([
 
     Route::middleware('role:admin,petugas_gudang')
         ->group(function () {
-            // Menyelesaikan opname dan menyimpan riwayat.
+
+            // Memulai periode stok opname baru.
+            Route::post('/stok-opname/mulai', [
+                StokOpnameController::class,
+                'mulai',
+            ]);
+
+            // Mengambil periode opname yang sedang berlangsung.
+            Route::get('/stok-opname/aktif', [
+                StokOpnameController::class,
+                'aktif',
+            ]);
+
+            // Menyelesaikan periode stok opname.
             Route::post('/stok-opname/selesaikan', [
                 StokOpnameController::class,
                 'selesaikan',
             ]);
 
-            // Mengambil riwayat opname dari database.
+            // Mengambil riwayat opname yang sudah selesai.
             Route::get('/stok-opname/riwayat', [
                 StokOpnameController::class,
                 'riwayat',

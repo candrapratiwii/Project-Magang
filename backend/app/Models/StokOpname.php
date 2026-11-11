@@ -15,6 +15,7 @@ class StokOpname extends Model
         'user_id',
         'dimulai_pada',
         'selesai_pada',
+        'status',
         'total_barang',
         'jumlah_selisih',
     ];

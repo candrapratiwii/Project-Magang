@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { apiRequest } from "./api";
 import { AuthContext, type User } from "./auth";
+import { NotificationProvider } from "./Components/Notification";
 import DashboardScreen from "./pages/dashboard";
 import DetailBarangScreen from "./pages/detail";
 import FormTambahEditBarangScreen from "./pages/form";
@@ -73,7 +75,8 @@ function routeFromHash(): Route {
   return route in routes ? route : "login";
 }
 
-export default function App() {
+// Komponen utama aplikasi berada di dalam NotificationProvider.
+function AppContent() {
   const [user, setUser] = useState<User | null>(loadUser);
   const [route, setRoute] = useState<Route>(routeFromHash);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -114,12 +117,26 @@ export default function App() {
     setRoute("dashboard");
   };
 
-  const handleLogout = () => {
+  
+const handleLogout = async () => {
+  try {
+    // Kirim permintaan logout ke backend Laravel
+    await apiRequest("/logout", {
+      method: "POST",
+    });
+  } catch (error) {
+    console.error("Gagal mencatat logout ke backend:", error);
+  } finally {
+    // Tetap keluarkan pengguna dari aplikasi
+    sessionStorage.removeItem("simpera-net-token");
     sessionStorage.removeItem(STORAGE_KEY);
+
     setUser(null);
     window.location.hash = "login";
     setRoute("login");
-  };
+  }
+};
+
 
   const handleClick = (event: React.MouseEvent<HTMLElement>) => {
     const target = (event.target as HTMLElement).closest(
@@ -142,7 +159,7 @@ export default function App() {
     );
   }
 
-  // Cadangan: kalau route tidak boleh dibuka, jangan render sama sekali
+  // Cadangan: kalau route tidak boleh dibuka, jangan render sama sekali.
   const Screen = canOpen(route) ? routes[route] : DashboardScreen;
   const visibleNav = navItems.filter(([, r]) => canOpen(r));
 
@@ -213,5 +230,13 @@ export default function App() {
         <Screen />
       </main>
     </AuthContext.Provider>
+  );
+}
+
+export default function App() {
+  return (
+    <NotificationProvider>
+      <AppContent />
+    </NotificationProvider>
   );
 }

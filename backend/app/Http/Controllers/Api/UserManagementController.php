@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\ActivityLog;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -66,6 +67,16 @@ class UserManagementController extends Controller
 
         $user = User::create($validated);
 
+        // Catat aktivitas penambahan pengguna
+        $actor = $request->user();
+
+        ActivityLog::create([
+            'user_id' => $actor->id,
+            'user_name' => $actor->name,
+            'activity_type' => 'user_created',
+            'description' => 'Menambahkan pengguna baru: ' . $user->name,
+        ]);
+
         return response()->json([
             'message' => 'Pengguna berhasil ditambahkan.',
             'data' => $this->userData($user),
@@ -113,6 +124,17 @@ class UserManagementController extends Controller
             ],
         ]);
 
+        $actor = $request->user();
+
+        // Simpan status lama sebelum data diperbarui
+        $oldStatus = $user->status;
+
+        // Pisahkan perubahan status dari perubahan data lainnya
+        $otherChanges = array_diff_key(
+            $validated,
+            ['status' => true]
+        );
+
         if (isset($validated['password'])) {
             $validated['password'] = Hash::make(
                 $validated['password']
@@ -121,9 +143,45 @@ class UserManagementController extends Controller
 
         $user->update($validated);
 
+        $updatedUser = $user->fresh();
+
+        // Catat aktivitas perubahan data pengguna
+        // Password tidak pernah ditampilkan dalam keterangan
+        if (
+            ! empty($otherChanges) &&
+            $user->wasChanged(array_keys($otherChanges))
+        ) {
+            ActivityLog::create([
+                'user_id' => $actor->id,
+                'user_name' => $actor->name,
+                'activity_type' => 'user_updated',
+                'description' => 'Memperbarui data pengguna: '
+                    . $updatedUser->name,
+            ]);
+        }
+
+        // Catat aktivitas perubahan status akun secara terpisah
+        if (
+            array_key_exists('status', $validated) &&
+            $oldStatus !== $updatedUser->status
+        ) {
+            ActivityLog::create([
+                'user_id' => $actor->id,
+                'user_name' => $actor->name,
+                'activity_type' => 'status_changed',
+                'description' => 'Mengubah status akun '
+                    . $updatedUser->name
+                    . ' dari '
+                    . $oldStatus
+                    . ' menjadi '
+                    . $updatedUser->status
+                    . '.',
+            ]);
+        }
+
         return response()->json([
             'message' => 'Data pengguna berhasil diperbarui.',
-            'data' => $this->userData($user->fresh()),
+            'data' => $this->userData($updatedUser),
         ]);
     }
 

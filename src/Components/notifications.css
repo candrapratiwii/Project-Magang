@@ -1,0 +1,139 @@
+.simpera-notification-container {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    z-index: 10000;
+    display: flex;
+    width: min(390px, calc(100vw - 32px));
+    flex-direction: column;
+    gap: 12px;
+    pointer-events: none;
+  }
+  
+  .simpera-notification {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 15px 14px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #ffffff;
+    color: #1f2937;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.14);
+    pointer-events: auto;
+    animation: simpera-notification-enter 180ms ease-out;
+  }
+  
+  .simpera-notification--success {
+    border-left: 4px solid #16a34a;
+  }
+  
+  .simpera-notification--error {
+    border-left: 4px solid #dc2626;
+  }
+  
+  .simpera-notification--warning {
+    border-left: 4px solid #d97706;
+  }
+  
+  .simpera-notification--info {
+    border-left: 4px solid #2563eb;
+  }
+  
+  .simpera-notification__icon {
+    display: flex;
+    width: 28px;
+    height: 28px;
+    flex: 0 0 28px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    font-weight: 700;
+  }
+  
+  .simpera-notification__icon--success {
+    background: #dcfce7;
+    color: #15803d;
+  }
+  
+  .simpera-notification__icon--error {
+    background: #fee2e2;
+    color: #b91c1c;
+  }
+  
+  .simpera-notification__icon--warning {
+    background: #fef3c7;
+    color: #b45309;
+  }
+  
+  .simpera-notification__icon--info {
+    background: #dbeafe;
+    color: #1d4ed8;
+  }
+  
+  .simpera-notification__icon-symbol {
+    font-size: 15px;
+    line-height: 1;
+  }
+  
+  .simpera-notification__content {
+    min-width: 0;
+    flex: 1;
+  }
+  
+  .simpera-notification__title {
+    display: block;
+    margin: 1px 0 4px;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.4;
+  }
+  
+  .simpera-notification__message {
+    margin: 0;
+    color: #4b5563;
+    font-size: 13px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+  
+  .simpera-notification__close {
+    display: inline-flex;
+    width: 26px;
+    height: 26px;
+    flex: 0 0 26px;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #6b7280;
+    cursor: pointer;
+    font-size: 21px;
+    line-height: 1;
+  }
+  
+  .simpera-notification__close:hover {
+    background: #f3f4f6;
+    color: #111827;
+  }
+  
+  @keyframes simpera-notification-enter {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  @media (max-width: 640px) {
+    .simpera-notification-container {
+      right: 12px;
+      bottom: 12px;
+      width: calc(100vw - 24px);
+    }
+  }  
